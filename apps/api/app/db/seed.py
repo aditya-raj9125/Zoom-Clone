@@ -29,6 +29,7 @@ from app.common.enums import (
 )
 from app.common.utils import utcnow
 from app.core.constants import DEFAULT_USER_DISPLAY_NAME, DEFAULT_USER_EMAIL
+from app.features.auth.password import hash_password
 from app.features.chat.models import ChatMessage
 from app.features.meetings.generator import (
     generate_meeting_invite_token,
@@ -58,12 +59,16 @@ async def seed_database(db: AsyncSession) -> None:
             id=str(uuid.uuid4()),
             display_name=DEFAULT_USER_DISPLAY_NAME,
             email=DEFAULT_USER_EMAIL,
+            password_hash=hash_password("password123"),
             is_default_user=True,
         )
         db.add(default_user)
         await db.flush()
         logger.info("Created default user: %s", DEFAULT_USER_DISPLAY_NAME)
     else:
+        if not default_user.password_hash:
+            default_user.password_hash = hash_password("password123")
+            await db.flush()
         logger.info("Default user already exists — skipping")
 
     now = utcnow()
