@@ -4,7 +4,7 @@ services:
     runtime: python
     rootDir: apps/api
     buildCommand: pip install -r requirements.txt && pip install -e .
-    startCommand: mkdir -p /data && alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    startCommand: mkdir -p ./data && alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port $PORT
     healthCheckPath: /api/v1/health
     envVars:
       - key: ENVIRONMENT
@@ -12,18 +12,14 @@ services:
       - key: DEBUG
         value: false
       - key: DATABASE_URL
-        value: sqlite+aiosqlite:////data/zoom_clone.db
+        value: sqlite+aiosqlite:///./data/zoom_clone.db
       - key: JWT_SECRET_KEY
-        sync: false          # you will paste this in the Render dashboard
+        sync: false
       - key: FRONTEND_URL
-        sync: false          # paste your Vercel URL after deploying the frontend
+        sync: false
       - key: CORS_ORIGINS
-        sync: false          # same as FRONTEND_URL
+        sync: false
       - key: GOOGLE_CLIENT_ID
         value: ""
       - key: GOOGLE_CLIENT_SECRET
         value: ""
-    disk:
-      name: zoom-api-data
-      mountPath: /data
-      sizeGB: 1
