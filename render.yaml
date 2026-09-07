@@ -4,7 +4,7 @@ services:
     runtime: python
     rootDir: apps/api
     buildCommand: pip install -r requirements.txt && pip install -e .
-    startCommand: mkdir -p ./data && alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    startCommand: mkdir -p /tmp/zoom_data && alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port $PORT
     healthCheckPath: /api/v1/health
     envVars:
       - key: ENVIRONMENT
@@ -12,7 +12,7 @@ services:
       - key: DEBUG
         value: false
       - key: DATABASE_URL
-        value: sqlite+aiosqlite:///./data/zoom_clone.db
+        value: sqlite+aiosqlite:////tmp/zoom_data/zoom_clone.db
       - key: JWT_SECRET_KEY
         sync: false
       - key: FRONTEND_URL
