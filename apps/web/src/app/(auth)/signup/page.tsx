@@ -3,19 +3,44 @@
 import React, { useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
-import { Check, ChevronDown, ArrowLeft, ShieldCheck, Sparkles, UserCheck } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { Check, ChevronDown, ArrowLeft, UserCheck, AlertCircle } from "lucide-react";
+import { api } from "@/lib/api";
+import { setStoredUser, setToken } from "@/lib/auth";
+
+function GoogleIcon() {
+  return (
+    <svg className="w-5 h-5 shrink-0" viewBox="0 0 24 24">
+      <path
+        fill="#4285F4"
+        d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.66-5.17 3.66-9.17z"
+      />
+      <path
+        fill="#34A853"
+        d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.1-6.72-4.93H1.26v3.15C3.25 21.37 7.34 24 12 24z"
+      />
+      <path
+        fill="#FBBC05"
+        d="M5.28 14.27c-.25-.72-.38-1.49-.38-2.27s.13-1.55.38-2.27V6.58H1.26C.46 8.16 0 9.97 0 12s.46 3.84 1.26 5.42l4.02-3.15z"
+      />
+      <path
+        fill="#EA4335"
+        d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.34 0 3.25 2.63 1.26 6.58l4.02 3.15c.95-2.83 3.6-4.98 6.72-4.98z"
+      />
+    </svg>
+  );
+}
 
 export default function SignUpPage() {
+  const router = useRouter();
   const [step, setStep] = useState<1 | 2 | 3>(1);
   const [birthYear, setBirthYear] = useState("");
   const [yearError, setYearError] = useState("");
 
-  // Form fields aligned with Database User Model (apps/api/app/features/users/models.py)
   const [formData, setFormData] = useState({
-    displayName: "", // maps to display_name (String 100)
-    email: "",       // maps to email (String 255)
-    password: "",    // maps to user auth credential
-    avatarUrl: "",   // maps to avatar_url (String 500)
+    displayName: "",
+    email: "",
+    password: "",
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formError, setFormError] = useState("");
@@ -38,7 +63,12 @@ export default function SignUpPage() {
     setStep(2);
   };
 
-  const handleRegisterSubmit = (e: React.FormEvent) => {
+  const handleGoogleSignUp = () => {
+    const backendUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1";
+    window.location.href = `${backendUrl}/auth/google/login`;
+  };
+
+  const handleRegisterSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.displayName.trim()) {
       setFormError("Full Name is required.");
@@ -56,18 +86,26 @@ export default function SignUpPage() {
     setIsSubmitting(true);
     setFormError("");
 
-    // Simulate creation and profile saving aligned with User schema
-    setTimeout(() => {
-      setIsSubmitting(false);
+    try {
+      const res = await api.register(
+        formData.displayName.trim(),
+        formData.email.trim(),
+        formData.password
+      );
+      setToken(res.access_token);
+      setStoredUser(res.user);
       setStep(3);
-    }, 900);
+    } catch (err: any) {
+      setFormError(err.message || "Registration failed. Please check your details.");
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
     <div className="min-h-screen bg-[#FBFBFC] flex flex-col font-sans selection:bg-blue-100 selection:text-blue-900">
       {/* Top Header */}
       <header className="w-full bg-white border-b border-slate-200/80 px-6 sm:px-10 py-4.5 flex items-center justify-between">
-        {/* Zoom Logo */}
         <Link href="/" className="flex items-center group">
           <svg
             className="h-7 w-auto text-[#0B5CFF] transition-transform group-hover:scale-105"
@@ -79,7 +117,6 @@ export default function SignUpPage() {
           </svg>
         </Link>
 
-        {/* Header Right Nav */}
         <div className="flex items-center gap-5 sm:gap-7 text-xs sm:text-sm">
           <div className="flex items-center gap-1.5 text-slate-600">
             <span className="hidden sm:inline">Already have an account?</span>
@@ -108,9 +145,8 @@ export default function SignUpPage() {
       {/* Main Content Area */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-8 py-8 sm:py-12 flex items-center justify-center">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 lg:gap-16 items-center w-full">
-          {/* Left Column: Coworker Illustration & Basic Account Card */}
+          {/* Left Column: Illustration & Feature Checklist */}
           <div className="lg:col-span-5 flex flex-col items-center lg:items-start max-w-md mx-auto lg:max-w-none w-full">
-            {/* Illustration */}
             <div className="relative w-full aspect-[4/3] max-w-md rounded-2xl overflow-hidden mb-6 bg-slate-50 border border-slate-100 shadow-xs">
               <Image
                 src="/assets/auth/signup_illustration.jpg"
@@ -121,7 +157,6 @@ export default function SignUpPage() {
               />
             </div>
 
-            {/* Feature Checklist Card */}
             <div className="w-full bg-white rounded-3xl p-6 sm:p-7 border border-slate-200/90 shadow-[0_4px_24px_rgba(0,0,0,0.04)]">
               <h2 className="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight mb-5">
                 Create your free Basic account
@@ -129,11 +164,11 @@ export default function SignUpPage() {
 
               <ul className="space-y-3.5">
                 {[
-                  "Get up to 40 minutes and 100 participants per meeting",
-                  "Share AI Docs",
-                  "Get 3 editable whiteboards",
-                  "Unlimited instant messaging",
-                  "Create up to 5 two-minute video messages",
+                  "Unlimited 1-on-1 and group video meetings",
+                  "HD audio, video and screen sharing",
+                  "In-meeting chat, emoji reactions & live presence",
+                  "Instant meeting links with zero registration for guests",
+                  "Secure end-to-end WebRTC peer connections",
                 ].map((item, index) => (
                   <li key={index} className="flex items-start gap-3">
                     <div className="w-5 h-5 rounded-full bg-[#10B981] flex items-center justify-center text-white shrink-0 mt-0.5 shadow-xs">
@@ -151,7 +186,7 @@ export default function SignUpPage() {
           {/* Right Column: Multi-Step Interactive Form */}
           <div className="lg:col-span-7 flex flex-col items-center justify-center lg:pl-8">
             <div className="max-w-md w-full">
-              {/* STEP 1: Birth Year Verification */}
+              {/* STEP 1: Birth Year Verification + Google OAuth Option */}
               {step === 1 && (
                 <div className="w-full text-center">
                   <h1 className="text-3xl sm:text-4xl font-bold text-slate-900 tracking-tight">
@@ -161,7 +196,26 @@ export default function SignUpPage() {
                     To create your Zoom account, please enter your birth year. This data won&apos;t be stored.
                   </p>
 
-                  <form onSubmit={handleContinueStep1} className="mt-8 space-y-4">
+                  {/* Prominent Google Sign-Up Option */}
+                  <div className="mt-6 mb-4">
+                    <button
+                      type="button"
+                      id="google-signup-btn"
+                      onClick={handleGoogleSignUp}
+                      className="w-full h-12 rounded-xl border border-slate-300 hover:border-slate-400 bg-white hover:bg-slate-50 text-slate-700 text-sm font-semibold shadow-xs flex items-center justify-center gap-3 transition-all hover:scale-[1.01] active:scale-[0.99] cursor-pointer"
+                    >
+                      <GoogleIcon />
+                      <span>Continue with Google</span>
+                    </button>
+                  </div>
+
+                  <div className="relative my-6 border-t border-slate-200">
+                    <span className="absolute left-1/2 -translate-x-1/2 -top-2.5 bg-[#FBFBFC] px-3 text-xs text-slate-400 font-medium">
+                      Or continue with email
+                    </span>
+                  </div>
+
+                  <form onSubmit={handleContinueStep1} className="space-y-4">
                     <div className="relative text-left">
                       <label
                         htmlFor="birthYear"
@@ -205,7 +259,7 @@ export default function SignUpPage() {
                 </div>
               )}
 
-              {/* STEP 2: Profile & Credentials Form (Database Schema Aligned) */}
+              {/* STEP 2: Profile & Credentials Form */}
               {step === 2 && (
                 <div className="w-full">
                   <button
@@ -226,12 +280,13 @@ export default function SignUpPage() {
 
                   <form onSubmit={handleRegisterSubmit} className="mt-6 space-y-4">
                     {formError && (
-                      <div className="p-3 rounded-xl bg-red-50 border border-red-200 text-xs text-red-700 font-medium">
-                        {formError}
+                      <div className="p-3 rounded-xl bg-red-50 border border-red-200 text-xs text-red-700 font-medium flex items-center gap-2">
+                        <AlertCircle className="w-4 h-4 shrink-0 text-red-500" />
+                        <span>{formError}</span>
                       </div>
                     )}
 
-                    {/* display_name: String(100) */}
+                    {/* display_name */}
                     <div>
                       <label
                         htmlFor="displayName"
@@ -253,7 +308,7 @@ export default function SignUpPage() {
                       />
                     </div>
 
-                    {/* email: String(255) unique */}
+                    {/* email */}
                     <div>
                       <label
                         htmlFor="email"
@@ -275,7 +330,7 @@ export default function SignUpPage() {
                       />
                     </div>
 
-                    {/* password credential */}
+                    {/* password */}
                     <div>
                       <label
                         htmlFor="password"
@@ -292,27 +347,6 @@ export default function SignUpPage() {
                         value={formData.password}
                         onChange={(e) =>
                           setFormData({ ...formData, password: e.target.value })
-                        }
-                        className="w-full h-12 px-4 rounded-xl border border-slate-300 bg-white text-sm text-slate-900 placeholder:text-slate-400 outline-none focus:border-[#0B5CFF] focus:ring-4 focus:ring-blue-100 transition-all"
-                      />
-                    </div>
-
-                    {/* avatar_url: String(500) optional */}
-                    <div>
-                      <label
-                        htmlFor="avatarUrl"
-                        className="block text-xs font-semibold text-slate-700 mb-1.5"
-                      >
-                        Avatar URL <span className="text-slate-400 font-normal">(Optional)</span>
-                      </label>
-                      <input
-                        id="avatarUrl"
-                        type="url"
-                        maxLength={500}
-                        placeholder="https://example.com/avatar.jpg"
-                        value={formData.avatarUrl}
-                        onChange={(e) =>
-                          setFormData({ ...formData, avatarUrl: e.target.value })
                         }
                         className="w-full h-12 px-4 rounded-xl border border-slate-300 bg-white text-sm text-slate-900 placeholder:text-slate-400 outline-none focus:border-[#0B5CFF] focus:ring-4 focus:ring-blue-100 transition-all"
                       />
@@ -352,16 +386,10 @@ export default function SignUpPage() {
 
                   <div className="mt-8 space-y-3">
                     <Link
-                      href="/"
+                      href="/dashboard"
                       className="inline-flex w-full h-12 items-center justify-center rounded-xl bg-[#0B5CFF] hover:bg-[#004BDE] text-white text-sm font-semibold shadow-md transition-all active:scale-[0.99]"
                     >
-                      Return to Home Page
-                    </Link>
-                    <Link
-                      href="/signin"
-                      className="inline-flex w-full h-12 items-center justify-center rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 text-sm font-semibold transition-all"
-                    >
-                      Sign In to Zoom Workplace
+                      Open Zoom Workplace Dashboard
                     </Link>
                   </div>
                 </div>
