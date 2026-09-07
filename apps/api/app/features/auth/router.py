@@ -3,10 +3,11 @@
 import logging
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
+from fastapi import APIRouter, Depends, Query, Response, status
 from fastapi.responses import RedirectResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.dependencies import get_current_user
 from app.core.config import get_settings
 from app.core.database import get_db
 from app.core.exceptions import GoogleOAuthNotConfiguredError
@@ -153,9 +154,6 @@ async def google_callback(
             url=f"{frontend_url}/signin?error=google_auth_failed",
             status_code=status.HTTP_307_TEMPORARY_REDIRECT,
         )
-
-
-from app.api.dependencies import get_current_user
 
 
 @router.get(

@@ -5,7 +5,7 @@ Tokens carry: user_id, email, display_name, exp.
 """
 
 from datetime import UTC, datetime, timedelta
-from typing import Any
+from typing import Any, cast
 
 from jose import JWTError, jwt
 
@@ -29,7 +29,7 @@ def create_access_token(
         "exp": expire,
         "iat": datetime.now(tz=UTC),
     }
-    return jwt.encode(payload, settings.jwt_secret_key, algorithm=_ALGORITHM)
+    return cast("str", jwt.encode(payload, settings.jwt_secret_key, algorithm=_ALGORITHM))
 
 
 def decode_access_token(token: str) -> dict[str, Any]:
@@ -39,7 +39,9 @@ def decode_access_token(token: str) -> dict[str, Any]:
     Raises JWTError on invalid / expired tokens.
     """
     settings = get_settings()
-    return jwt.decode(token, settings.jwt_secret_key, algorithms=[_ALGORITHM])
+    return cast(
+        "dict[str, Any]", jwt.decode(token, settings.jwt_secret_key, algorithms=[_ALGORITHM])
+    )
 
 
-__all__ = ["create_access_token", "decode_access_token", "JWTError"]
+__all__ = ["JWTError", "create_access_token", "decode_access_token"]

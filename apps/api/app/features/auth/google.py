@@ -23,7 +23,7 @@ _SCOPES = "openid email profile"
 
 @dataclass
 class GoogleUserInfo:
-    google_id: str   # 'sub' claim
+    google_id: str  # 'sub' claim
     email: str
     display_name: str
     picture: str | None
@@ -89,4 +89,4 @@ async def exchange_google_code(code: str) -> GoogleUserInfo:
         )
 
 
-__all__ = ["get_google_auth_url", "exchange_google_code", "GoogleUserInfo"]
+__all__ = ["GoogleUserInfo", "exchange_google_code", "get_google_auth_url"]

@@ -5,7 +5,7 @@ import bcrypt
 
 def hash_password(plain: str) -> str:
     """Return a bcrypt hash of the plain-text password.
-    
+
     Truncates at 72 bytes as per bcrypt specification.
     """
     password_bytes = plain.encode("utf-8")[:72]

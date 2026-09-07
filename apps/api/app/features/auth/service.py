@@ -57,9 +57,7 @@ class AuthService:
             DuplicateEmailError: Email already registered.
         """
         # Check email uniqueness
-        result = await self._db.execute(
-            select(User).where(User.email == request.email.lower())
-        )
+        result = await self._db.execute(select(User).where(User.email == request.email.lower()))
         if result.scalar_one_or_none() is not None:
             raise DuplicateEmailError("An account with this email already exists.")
 
@@ -85,9 +83,7 @@ class AuthService:
         Raises:
             InvalidCredentialsError: Wrong email or password.
         """
-        result = await self._db.execute(
-            select(User).where(User.email == request.email.lower())
-        )
+        result = await self._db.execute(select(User).where(User.email == request.email.lower()))
         user = result.scalar_one_or_none()
 
         if user is None or not user.password_hash:
@@ -106,16 +102,12 @@ class AuthService:
         On subsequent sign-ins, returns existing user (updating avatar if changed).
         """
         # Try to find existing user by google_id
-        result = await self._db.execute(
-            select(User).where(User.oauth_id == info.google_id)
-        )
+        result = await self._db.execute(select(User).where(User.oauth_id == info.google_id))
         user = result.scalar_one_or_none()
 
         if user is None:
             # Try by email (user may have registered with password first)
-            result = await self._db.execute(
-                select(User).where(User.email == info.email.lower())
-            )
+            result = await self._db.execute(select(User).where(User.email == info.email.lower()))
             user = result.scalar_one_or_none()
 
         if user is None:

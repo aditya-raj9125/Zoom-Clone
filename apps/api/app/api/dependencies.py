@@ -11,7 +11,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.core.exceptions import InvalidTokenError, UserNotFoundError
+from app.core.exceptions import InvalidTokenError
 from app.features.auth.jwt import decode_access_token
 from app.features.users.models import User
 from app.features.users.service import UserService
@@ -48,23 +48,29 @@ async def get_current_user(
     request: Request,
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> User:
-    """Resolve authenticated user or raise 401 InvalidTokenError."""
+    """Resolve authenticated user if token present, or fallback to default user.
+
+    This ensures compatibility with the assignment requirements ('Assume a default user is logged in')
+    while providing full support for JWT authenticated users when signed in.
+    """
     token = _extract_token(request)
     if not token:
-        raise InvalidTokenError("Authentication token is missing. Please sign in.")
+        # Fallback to seeded default user when no auth header is supplied
+        return await get_default_user(db)
+
     try:
         payload = decode_access_token(token)
         user_id = payload.get("sub")
         if not user_id:
-            raise InvalidTokenError("Invalid token payload.")
-    except JWTError:
-        raise InvalidTokenError("Invalid or expired authentication token.")
+            return await get_default_user(db)
 
-    result = await db.execute(select(User).where(User.id == user_id))
-    user = result.scalar_one_or_none()
-    if user is None:
-        raise UserNotFoundError("User account not found.")
-    return user
+        result = await db.execute(select(User).where(User.id == user_id))
+        user = result.scalar_one_or_none()
+        if user is not None:
+            return user
+        return await get_default_user(db)
+    except JWTError:
+        raise InvalidTokenError("Invalid or expired authentication token.") from None
 
 
 async def get_default_user(
