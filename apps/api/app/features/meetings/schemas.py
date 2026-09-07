@@ -128,6 +128,7 @@ class MeetingHostInfo(BaseModel):
 
     id: str
     display_name: str
+    participant_id: str | None = None
 
 
 class MeetingResponse(BaseModel):
@@ -145,6 +146,7 @@ class MeetingResponse(BaseModel):
     invite_link: str = Field(..., description="Full shareable invite URL")
     passcode: str = Field(..., description="Meeting passcode")
     host: MeetingHostInfo | None
+    host_participant_id: str | None = None
     scheduled_start_at: datetime | None
     scheduled_end_at: datetime | None
     actual_started_at: datetime | None

@@ -87,10 +87,10 @@ class ParticipantService:
         self._db.add(event)
         await self._db.flush()
 
-    def _get_ws_url(self, meeting_id: str) -> str:
+    def _get_ws_url(self, meeting_id: str, participant_id: str) -> str:
         settings = get_settings()
         host = settings.host if settings.host != "0.0.0.0" else "127.0.0.1"
-        return f"ws://{host}:{settings.port}/api/v1/ws/meetings/{meeting_id}"
+        return f"ws://{host}:{settings.port}/api/v1/ws/meetings/{meeting_id}?participant_id={participant_id}"
 
     # ---------------------------------------------------------------------------
     # Join by meeting ID
@@ -147,6 +147,27 @@ class ParticipantService:
             raise MeetingNotJoinableError(
                 f"Meeting cannot be joined in status '{meeting.status.value}'."
             )
+
+        # Check if this is the host connecting or rejoining their pre-created session
+        existing_host = await self._participant_repo.get_active_host(str(meeting.id))
+        if existing_host:
+            is_same_user = user is not None and existing_host.user_id and str(existing_host.user_id) == str(user.id)
+            is_same_name = display_name.strip().lower() == existing_host.display_name.strip().lower()
+            if is_same_user or is_same_name:
+                meeting_response = self._meeting_service._build_meeting_response(
+                    meeting, host_participant_id=existing_host.participant_id
+                )
+                return JoinMeetingResponse(
+                    participant_id=existing_host.participant_id,
+                    meeting_id=meeting.meeting_id,
+                    display_name=existing_host.display_name,
+                    role=ParticipantRole.HOST,
+                    is_host=True,
+                    audio_enabled=existing_host.audio_enabled,
+                    video_enabled=existing_host.video_enabled,
+                    meeting=meeting_response,
+                    websocket_url=self._get_ws_url(meeting.meeting_id, existing_host.participant_id),
+                )
 
         if not skip_passcode:
             from app.core.exceptions import InvalidPasscodeError
@@ -218,7 +239,7 @@ class ParticipantService:
             audio_enabled=True,
             video_enabled=True,
             meeting=meeting_response,
-            websocket_url=self._get_ws_url(meeting.meeting_id),
+            websocket_url=self._get_ws_url(meeting.meeting_id, participant_id),
         )
 
     # ---------------------------------------------------------------------------

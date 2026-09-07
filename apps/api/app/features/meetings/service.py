@@ -97,8 +97,18 @@ class MeetingService:
         return f"{base}/join/{invite_token}"
 
     def _build_meeting_response(
-        self, meeting: Meeting, participant_count: int = 0
+        self,
+        meeting: Meeting,
+        participant_count: int = 0,
+        host_participant_id: str | None = None,
     ) -> MeetingResponse:
+        resolved_host_pid = host_participant_id
+        if resolved_host_pid is None and getattr(meeting, "participants", None):
+            for p in meeting.participants:
+                if getattr(p, "is_host", False) and getattr(p, "is_active", True):
+                    resolved_host_pid = p.participant_id
+                    break
+
         host_info = None
         if meeting.host:
             from app.features.meetings.schemas import MeetingHostInfo
@@ -106,6 +116,7 @@ class MeetingService:
             host_info = MeetingHostInfo(
                 id=str(meeting.host.id),
                 display_name=meeting.host.display_name,
+                participant_id=resolved_host_pid,
             )
         return MeetingResponse(
             id=str(meeting.id),
@@ -118,6 +129,7 @@ class MeetingService:
             invite_link=self._build_invite_link(meeting.invite_token),
             passcode=meeting.passcode,
             host=host_info,
+            host_participant_id=resolved_host_pid,
             scheduled_start_at=meeting.scheduled_start_at,
             scheduled_end_at=meeting.scheduled_end_at,
             actual_started_at=meeting.actual_started_at,
@@ -213,7 +225,9 @@ class MeetingService:
         await self._db.refresh(meeting)
 
         logger.info("Instant meeting created: meeting_id=%s host=%s", meeting_id, host.display_name)
-        return self._build_meeting_response(meeting, participant_count=1)
+        return self._build_meeting_response(
+            meeting, participant_count=1, host_participant_id=participant_id
+        )
 
     # ---------------------------------------------------------------------------
     # Schedule meeting
