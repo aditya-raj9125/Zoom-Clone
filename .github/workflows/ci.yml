@@ -1,0 +1,97 @@
+name: CI/CD Pipeline - Zoom Clone
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # =========================================================================
+  # 1. Backend Verification (FastAPI, SQLite, Pytest, Ruff, Mypy)
+  # =========================================================================
+  backend-ci:
+    name: Backend CI (Tests & Linting)
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: apps/api
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest pytest-asyncio ruff mypy types-python-dateutil
+
+      - name: Run Ruff Linter
+        run: ruff check .
+
+      - name: Run Ruff Formatter Check
+        run: ruff format --check .
+
+      - name: Run Mypy Type Checker
+        run: mypy app
+
+      - name: Run Pytest Test Suite
+        run: pytest -v
+
+  # =========================================================================
+  # 2. Frontend Verification (Next.js 16, TypeScript, Production Build)
+  # =========================================================================
+  frontend-ci:
+    name: Frontend CI (Typecheck & Build)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: "npm"
+
+      - name: Install Monorepo Dependencies
+        run: npm install
+
+      - name: TypeScript Typecheck
+        working-directory: apps/web
+        run: npx tsc --noEmit
+
+      - name: Next.js Production Build
+        run: npm run build:web
+        env:
+          NEXT_PUBLIC_API_URL: "http://localhost:8000/api/v1"
+          NEXT_PUBLIC_WS_URL: "ws://localhost:8000/api/v1/ws"
+
+  # =========================================================================
+  # 3. Deployment Summary / Notification
+  # =========================================================================
+  deploy-status:
+    name: Deploy to Railway
+    needs: [backend-ci, frontend-ci]
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+
+    steps:
+      - name: Log Deployment Trigger
+        run: |
+          echo "All CI checks passed successfully!"
+          echo "Railway is synced to branch 'main' and automatically deploys the latest commit."
+          echo "Commit SHA: ${{ github.sha }}"
