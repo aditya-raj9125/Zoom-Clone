@@ -1,0 +1,131 @@
+"""WebSocket connection manager.
+
+Responsibilities:
+- Track connected WebSocket clients per meeting.
+- Broadcast events to all participants in a meeting.
+- Send targeted events to a specific participant.
+- Disconnect participants when removed or meeting ends.
+
+Design decisions:
+- Pure in-memory registry — no database I/O here.
+- Thread safety: FastAPI with uvicorn uses a single async event loop so we do
+  not need locks for the dict mutations (they are coroutine-safe).
+- If horizontal scaling is needed in the future, replace the in-memory dict
+  with a Redis pub/sub adapter behind the same interface.
+"""
+
+import contextlib
+import logging
+from collections import defaultdict
+
+from fastapi import WebSocket
+from starlette.websockets import WebSocketState
+
+from app.features.realtime.events import WSEvent
+
+logger = logging.getLogger(__name__)
+
+
+class ConnectionManager:
+    """Manages all active WebSocket connections across all meetings.
+
+    Structure::
+
+        _connections: {
+            meeting_id: {
+                participant_id: WebSocket
+            }
+        }
+    """
+
+    def __init__(self) -> None:
+        # meeting_id → {participant_id → WebSocket}
+        self._connections: dict[str, dict[str, WebSocket]] = defaultdict(dict)
+
+    # ---------------------------------------------------------------------------
+    # Connection lifecycle
+    # ---------------------------------------------------------------------------
+
+    async def connect(
+        self,
+        websocket: WebSocket,
+        meeting_id: str,
+        participant_id: str,
+    ) -> None:
+        """Accept the WebSocket and register the connection."""
+        await websocket.accept()
+        self._connections[meeting_id][participant_id] = websocket
+        logger.info(
+            "WebSocket connected | meeting=%s participant=%s",
+            meeting_id,
+            participant_id,
+        )
+
+    async def disconnect(self, meeting_id: str, participant_id: str) -> None:
+        """Remove the connection from the registry and close the socket gracefully."""
+        ws = self._connections.get(meeting_id, {}).pop(participant_id, None)
+        if ws and ws.client_state == WebSocketState.CONNECTED:
+            with contextlib.suppress(Exception):
+                await ws.close()
+        logger.info(
+            "WebSocket disconnected | meeting=%s participant=%s",
+            meeting_id,
+            participant_id,
+        )
+
+    # ---------------------------------------------------------------------------
+    # Broadcast
+    # ---------------------------------------------------------------------------
+
+    async def broadcast_to_meeting(self, meeting_id: str, event: WSEvent) -> None:
+        """Send an event to all connected participants in a meeting."""
+        message = event.to_json()
+        dead_connections: list[str] = []
+
+        for participant_id, ws in self._connections.get(meeting_id, {}).items():
+            try:
+                await ws.send_text(message)
+            except Exception as exc:
+                logger.warning(
+                    "Failed to send to participant %s in meeting %s: %s",
+                    participant_id,
+                    meeting_id,
+                    exc,
+                )
+                dead_connections.append(participant_id)
+
+        for participant_id in dead_connections:
+            self._connections[meeting_id].pop(participant_id, None)
+
+    async def send_to_participant(
+        self, meeting_id: str, participant_id: str, event: WSEvent
+    ) -> None:
+        """Send an event to a single participant (e.g. WebRTC signaling)."""
+        ws = self._connections.get(meeting_id, {}).get(participant_id)
+        if ws:
+            try:
+                await ws.send_text(event.to_json())
+            except Exception as exc:
+                logger.warning("Failed to send to participant %s: %s", participant_id, exc)
+
+    # ---------------------------------------------------------------------------
+    # Helpers
+    # ---------------------------------------------------------------------------
+
+    def is_connected(self, meeting_id: str, participant_id: str) -> bool:
+        return participant_id in self._connections.get(meeting_id, {})
+
+    def participant_count(self, meeting_id: str) -> int:
+        return len(self._connections.get(meeting_id, {}))
+
+    async def disconnect_meeting(self, meeting_id: str) -> None:
+        """Close all connections in a meeting (called on meeting.ended)."""
+        for participant_id in list(self._connections.get(meeting_id, {}).keys()):
+            await self.disconnect(meeting_id, participant_id)
+        self._connections.pop(meeting_id, None)
+
+
+# ---------------------------------------------------------------------------
+# Singleton — shared across the entire application process
+# ---------------------------------------------------------------------------
+connection_manager = ConnectionManager()
