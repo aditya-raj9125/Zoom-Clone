@@ -224,6 +224,7 @@ export function PlatformTabsSection() {
                 src={currentTab.imageSrc}
                 alt={currentTab.label}
                 fill
+                sizes="(max-width: 1024px) 100vw, 50vw"
                 className="object-cover opacity-85"
               />
               <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/20 to-black/30" />

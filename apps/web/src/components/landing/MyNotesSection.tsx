@@ -137,6 +137,7 @@ export function MyNotesSection() {
                       src="/images/landing/conference_room.jpg"
                       alt="Owen Hale"
                       fill
+                      sizes="(max-width: 768px) 50vw, 25vw"
                       className="object-cover"
                     />
                     <div className="absolute bottom-2 left-2 rounded bg-black/60 px-2 py-0.5 text-[11px] font-medium backdrop-blur-xs">
@@ -149,6 +150,7 @@ export function MyNotesSection() {
                       src="/images/landing/baseball_experience.jpg"
                       alt="Mateo Russo"
                       fill
+                      sizes="(max-width: 768px) 50vw, 25vw"
                       className="object-cover"
                     />
                     <div className="absolute bottom-2 left-2 rounded bg-black/60 px-2 py-0.5 text-[11px] font-medium backdrop-blur-xs">

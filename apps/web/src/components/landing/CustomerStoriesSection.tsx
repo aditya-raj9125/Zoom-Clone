@@ -27,6 +27,7 @@ export function CustomerStoriesSection() {
               src="/images/landing/baseball_experience.jpg"
               alt="Major League Baseball"
               fill
+              sizes="(max-width: 768px) 100vw, 60vw"
               className="object-cover transition-transform duration-700 group-hover:scale-105"
             />
             <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/30 to-black/20" />
@@ -59,6 +60,7 @@ export function CustomerStoriesSection() {
                 src="/images/landing/webinar_speaker.jpg"
                 alt="Global Talent"
                 fill
+                sizes="(max-width: 768px) 100vw, 40vw"
                 className="object-cover transition-transform duration-700 group-hover:scale-105"
               />
               <div className="absolute inset-0 bg-gradient-to-t from-[#00052D]/90 via-[#00052D]/40 to-transparent" />
@@ -77,6 +79,7 @@ export function CustomerStoriesSection() {
                 src="/images/landing/conference_room.jpg"
                 alt="Enterprise Financial Communications"
                 fill
+                sizes="(max-width: 768px) 100vw, 40vw"
                 className="object-cover transition-transform duration-700 group-hover:scale-105"
               />
               <div className="absolute inset-0 bg-gradient-to-t from-[#0B2B7A]/90 via-[#0B2B7A]/40 to-transparent" />
