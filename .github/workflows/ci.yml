@@ -69,7 +69,9 @@ jobs:
           cache-dependency-path: "package-lock.json"
 
       - name: Install Monorepo Dependencies
-        run: npm ci
+        run: |
+          npm ci
+          npm --prefix apps/web install --no-save lightningcss-linux-x64-gnu
 
       - name: TypeScript Typecheck
         working-directory: apps/web
