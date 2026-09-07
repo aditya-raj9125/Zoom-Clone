@@ -122,7 +122,7 @@ class InvalidInviteTokenError(AppError):
 
 
 # ---------------------------------------------------------------------------
-# User errors
+# User & Auth errors
 # ---------------------------------------------------------------------------
 
 
@@ -130,6 +130,30 @@ class UserNotFoundError(AppError):
     code = "USER_NOT_FOUND"
     message = "User does not exist."
     status = HTTPStatus.NOT_FOUND
+
+
+class DuplicateEmailError(AppError):
+    code = "DUPLICATE_EMAIL"
+    message = "An account with this email already exists."
+    status = HTTPStatus.CONFLICT
+
+
+class InvalidCredentialsError(AppError):
+    code = "INVALID_CREDENTIALS"
+    message = "Invalid email or password."
+    status = HTTPStatus.UNAUTHORIZED
+
+
+class InvalidTokenError(AppError):
+    code = "INVALID_TOKEN"
+    message = "Authentication token is missing, invalid, or expired."
+    status = HTTPStatus.UNAUTHORIZED
+
+
+class GoogleOAuthNotConfiguredError(AppError):
+    code = "GOOGLE_OAUTH_NOT_CONFIGURED"
+    message = "Google OAuth is not configured on the server."
+    status = HTTPStatus.SERVICE_UNAVAILABLE
 
 
 # ---------------------------------------------------------------------------

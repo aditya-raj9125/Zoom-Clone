@@ -83,6 +83,7 @@ export interface UserResponse {
 export interface MeetingHostInfo {
   id: string;
   display_name: string;
+  participant_id?: string | null;
 }
 
 export interface CreateInstantMeetingRequest {
@@ -108,6 +109,7 @@ export interface MeetingResponse {
   invite_link: string;
   passcode: string;
   host: MeetingHostInfo | null;
+  host_participant_id?: string | null;
   scheduled_start_at: string | null;
   scheduled_end_at: string | null;
   actual_started_at: string | null;
@@ -152,6 +154,8 @@ export interface JoinMeetingResponse {
   display_name: string;
   role: ParticipantRole;
   is_host: boolean;
+  audio_enabled: boolean;
+  video_enabled: boolean;
   websocket_url: string;
   meeting: MeetingResponse;
 }

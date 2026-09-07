@@ -67,6 +67,26 @@ class User(Base):
     )
 
     # ---------------------------------------------------------------------------
+    # Authentication credentials
+    # ---------------------------------------------------------------------------
+    password_hash: Mapped[str | None] = mapped_column(
+        String(255),
+        nullable=True,
+        comment="Bcrypt password hash for email+password login",
+    )
+    oauth_provider: Mapped[str | None] = mapped_column(
+        String(50),
+        nullable=True,
+        comment="OAuth provider name e.g. 'google'",
+    )
+    oauth_id: Mapped[str | None] = mapped_column(
+        String(255),
+        nullable=True,
+        index=True,
+        comment="Unique identifier from OAuth provider (sub claim)",
+    )
+
+    # ---------------------------------------------------------------------------
     # Application flags
     # ---------------------------------------------------------------------------
     is_default_user: Mapped[bool] = mapped_column(
