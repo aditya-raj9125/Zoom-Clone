@@ -19,7 +19,7 @@
       }
     ],
     "paths": {
-      "@/*": ["./*"],
+      "@/*": ["./src/*"],
       "@zoom-clone/ui": ["../../packages/ui/src/index.ts"],
       "@zoom-clone/contracts": ["../../packages/contracts/src/index.ts"]
     }
