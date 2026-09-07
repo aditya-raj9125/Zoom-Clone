@@ -71,7 +71,7 @@ jobs:
       - name: Install Monorepo Dependencies
         run: |
           npm ci
-          npm --prefix apps/web install --no-save lightningcss-linux-x64-gnu
+          npm install --workspace apps/web --install-strategy=shallow --no-save lightningcss-linux-x64-gnu
 
       - name: TypeScript Typecheck
         working-directory: apps/web
