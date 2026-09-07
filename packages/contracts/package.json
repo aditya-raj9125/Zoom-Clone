@@ -1,0 +1,14 @@
+{
+  "name": "@zoom-clone/contracts",
+  "version": "0.1.0",
+  "description": "Shared API request/response DTOs and WebSocket event contract definitions for Zoom Clone",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "scripts": {
+    "build": "tsc --noEmit",
+    "lint": "eslint ."
+  },
+  "devDependencies": {
+    "typescript": "^5"
+  }
+}

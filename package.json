@@ -1,0 +1,15 @@
+{
+  "name": "zoom-clone-monorepo",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Zoom Clone — Fullstack Monorepo",
+  "workspaces": [
+    "apps/web",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev:web": "npm --prefix apps/web run dev",
+    "build:web": "npm --prefix apps/web run build",
+    "lint:web": "npm --prefix apps/web run lint"
+  }
+}
