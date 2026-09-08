@@ -19,6 +19,8 @@ services:
         value: https://zoom-clone-web-gamma.vercel.app
       - key: CORS_ORIGINS
         value: https://zoom-clone-web-gamma.vercel.app,http://localhost:3000
+      - key: CORS_ORIGIN_REGEX
+        value: '^https://zoom-clone-web(?:-[a-z0-9-]+)*\.vercel\.app$'
       - key: GOOGLE_CLIENT_ID
         value: ""
       - key: GOOGLE_CLIENT_SECRET

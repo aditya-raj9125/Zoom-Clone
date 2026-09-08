@@ -54,6 +54,8 @@ DATABASE_URL=your-managed-database-url
 JWT_SECRET_KEY=long-random-production-secret
 FRONTEND_URL=https://your-vercel-domain
 CORS_ORIGINS=https://your-vercel-domain
+# Allows only this project's Vercel preview deployments.
+CORS_ORIGIN_REGEX=^https://zoom-clone-web(?:-[a-z0-9-]+)*\.vercel\.app$
 ```
 
 Google OAuth variables are optional unless that login flow is enabled.

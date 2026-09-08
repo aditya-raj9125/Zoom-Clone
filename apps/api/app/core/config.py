@@ -33,6 +33,9 @@ class Settings(BaseSettings):
 
     # CORS — stored as a raw string and parsed into a list
     cors_origins: str = "http://localhost:3000,http://localhost:5173"
+    # Vercel creates a different hostname for each preview deployment. Keep
+    # this restricted to this project's HTTPS Vercel hostname prefix.
+    cors_origin_regex: str = r"^https://zoom-clone-web(?:-[a-z0-9-]+)*\.vercel\.app$"
 
     # Logging
     log_level: str = "INFO"

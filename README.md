@@ -274,6 +274,7 @@ See [CI/CD and deployment](docs/CICD_SETUP.md) for environment variables, deploy
 - The current signaling registry is in memory. Multi-instance deployment requires shared pub/sub, such as Redis.
 - SQLite on Render uses the configured filesystem path and should be replaced with managed Postgres for durable production storage.
 - Configure `NEXT_PUBLIC_WEBRTC_ICE_SERVERS` with TURN credentials in production. STUN-only connectivity is not reliable across corporate, mobile, or symmetric-NAT networks.
+- `CORS_ORIGIN_REGEX` permits this project's Vercel preview deployments while keeping unrelated origins blocked.
 - Synthetic media tracks are used when browser media devices are unavailable, allowing restricted/headless environments to keep functioning.
 - The project is an educational/product prototype and does not claim Zoom’s production security, scale or compliance guarantees.
 
