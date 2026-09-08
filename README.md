@@ -152,11 +152,24 @@ $env:PYTHONPATH = "."
 
 ---
 
-## 6. Detailed Documentation
+---
 
+## 6. CI/CD & Deployment
+
+Automated with **GitHub Actions** for every push and pull request:
+- **Continuous Integration (CI):** Parallel execution of backend test suite (66 tests) and frontend TypeScript/Next.js production build.
+- **Continuous Deployment (CD):** Automatic deployment to **Vercel** (`zoom-clone-web-gamma.vercel.app`) and **Render** (`zoom-clone-hvoi.onrender.com`) on commit to `main`.
+- See the full [CI/CD Setup & Automation Guide](docs/CICD_SETUP.md) for details on setting up Deploy Hooks.
+
+---
+
+## 7. Detailed Documentation
+
+- [CI/CD & Deployment Guide](docs/CICD_SETUP.md)
 - [Architecture Overview](docs/architecture/overview.md)
 - [REST API Reference](docs/api/rest-api.md)
 - [WebSocket & WebRTC Protocol](docs/api/websocket-protocol.md)
 - [Database Schema & ER Diagram](docs/database/schema.md)
 - [Developer Setup Guide](docs/development/getting-started.md)
 - [ADR 001: Modular Monolith](docs/decisions/adr-001-modular-monolith.md)
+
