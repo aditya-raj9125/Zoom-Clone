@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
+import Image from "next/image";
 import { Loader2, AlertCircle, Video, User } from "lucide-react";
 import { api } from "@/lib/api";
 
@@ -83,9 +84,14 @@ export default function JoinByInvitePage() {
       <div className="w-full max-w-sm rounded-2xl bg-white p-7 text-center shadow-xl border border-slate-200 animate-in fade-in zoom-in-95">
         {/* Zoom Logo */}
         <div className="flex justify-center mb-6">
-          <svg className="h-6 w-auto text-[#0B5CFF]" viewBox="0 0 120 30" fill="currentColor">
-            <path d="M14.5 5.5H4.2l8.8 14.2H4.2v4.8h17.2v-3.7L12.5 6.6h9.2V5.5zM38.5 7.6c-5.2 0-9.4 3.9-9.4 8.7 0 4.8 4.2 8.7 9.4 8.7s9.4-3.9 9.4-8.7c0-4.8-4.2-8.7-9.4-8.7zm0 13.5c-2.8 0-5.1-2.1-5.1-4.8s2.3-4.8 5.1-4.8 5.1 2.1 5.1 4.8-2.3 4.8-5.1 4.8zm22.4-13.5c-5.2 0-9.4 3.9-9.4 8.7 0 4.8 4.2 8.7 9.4 8.7s9.4-3.9 9.4-8.7c0-4.8-4.2-8.7-9.4-8.7zm0 13.5c-2.8 0-5.1-2.1-5.1-4.8s2.3-4.8 5.1-4.8 5.1 2.1 5.1 4.8-2.3 4.8-5.1 4.8zm21.5-13.5c-2.6 0-4.8 1.1-6.1 2.8-.7-1.7-2.6-2.8-4.8-2.8-2 0-3.8 1-4.8 2.5V8.1h-4.3v16.4h4.3v-9.5c0-2.3 1.5-3.8 3.5-3.8s3.3 1.5 3.3 3.8v9.5h4.3v-9.5c0-2.3 1.5-3.8 3.5-3.8s3.3 1.5 3.3 3.8v9.5h4.3v-10c0-4.1-2.9-6.6-7.4-6.6z" />
-          </svg>
+          <Image
+            src="/assets/branding/logo-zoom-blue@2x.png"
+            alt="Zoom"
+            width={110}
+            height={25}
+            priority
+            className="h-6 w-auto object-contain"
+          />
         </div>
 
         {isLoading ? (

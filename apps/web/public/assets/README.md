@@ -6,6 +6,9 @@ This document outlines the organization of assets used across the Zoom Clone fro
 
 ```
 public/assets/
+├── branding/                              # Official Zoom Brand Assets & Logos
+│   ├── logo-zoom-white@2x.png             # Crisp white logo for dark/navy backgrounds (Navbar, Footer, Join)
+│   └── logo-zoom-blue@2x.png              # Official Zoom Blue (#0B5CFF) logo for light backgrounds (Scrolled nav, Signin, Signup, Dashboard)
 ├── auth/                                  # Assets for Authentication Flows
 │   ├── zoomtopia.jpg                      # Sign In page: Zoomtopia 3D blue glossy ribbon promotional banner
 │   └── signup_illustration.jpg            # Sign Up page: Coworkers assembling video tiles on monitor
