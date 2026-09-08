@@ -19,8 +19,8 @@ export function RemoteVideoTile({
   className = "",
   isMainStage = false,
 }: RemoteVideoTileProps) {
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const audioRef = useRef<HTMLAudioElement>(null);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
   const [trackTick, setTrackTick] = React.useState(0);
 
   // Re-check live status on track events (unmute, addtrack, etc.)
@@ -46,7 +46,7 @@ export function RemoteVideoTile({
   // Check if stream has an active video track
   const videoTrack = stream?.getVideoTracks()[0];
   const hasLiveVideoTrack = Boolean(
-    videoTrack && videoTrack.readyState === "live" && videoTrack.enabled
+    videoTrack && videoTrack.readyState === "live"
   );
 
   // Dedicated audio playback ensures remote audio is never blocked by video state
@@ -65,7 +65,7 @@ export function RemoteVideoTile({
 
   // Callback ref ensures srcObject is attached immediately on DOM mount
   const bindVideo = (node: HTMLVideoElement | null) => {
-    (videoRef as React.MutableRefObject<HTMLVideoElement | null>).current = node;
+    videoRef.current = node;
     if (node) {
       if (stream && stream.getVideoTracks().length > 0) {
         if (node.srcObject !== stream) {

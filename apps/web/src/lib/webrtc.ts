@@ -17,14 +17,21 @@ const DEFAULT_ICE_SERVERS: RTCIceServer[] = [
   { urls: "stun:stun.l.google.com:19302" },
   { urls: "stun:stun1.l.google.com:19302" },
   { urls: "stun:stun2.l.google.com:19302" },
+  { urls: "stun:stun3.l.google.com:19302" },
+  { urls: "stun:stun4.l.google.com:19302" },
   // Cloudflare Public STUN
   { urls: "stun:stun.cloudflare.com:3478" },
-  // OpenRelay Free Global TURN Relays (UDP + TCP + TLS over 80/443/3478)
+  // OpenRelay Public STUN
+  { urls: "stun:openrelay.metered.ca:80" },
+  // OpenRelay Free Global TURN Relays (UDP + TCP over ports 80, 443, and 3478)
   {
     urls: [
       "turn:openrelay.metered.ca:80",
+      "turn:openrelay.metered.ca:80?transport=tcp",
       "turn:openrelay.metered.ca:443",
       "turn:openrelay.metered.ca:443?transport=tcp",
+      "turn:openrelay.metered.ca:3478",
+      "turn:openrelay.metered.ca:3478?transport=tcp",
     ],
     username: "openrelayproject",
     credential: "openrelayproject",
@@ -34,9 +41,6 @@ const DEFAULT_ICE_SERVERS: RTCIceServer[] = [
 /**
  * Reads the deploy-time ICE configuration. A TURN relay is required for
  * reliable media on mobile, corporate, CGNAT, and symmetric-NAT networks.
- *
- * Example NEXT_PUBLIC_WEBRTC_ICE_SERVERS value:
- * [{"urls":"stun:stun.example.com:3478"},{"urls":"turn:turn.example.com:3478?transport=udp","username":"...","credential":"..."}]
  */
 function getIceServers(): RTCIceServer[] {
   const raw = process.env.NEXT_PUBLIC_WEBRTC_ICE_SERVERS;
@@ -137,9 +141,7 @@ export class WebRTCManager {
         previousStream.getTracks().forEach((track) => track.stop());
       }
 
-      // Replace the sender track on the existing transceiver. A participant
-      // may have joined with camera/mic off, so the peer connection already
-      // has its media transceivers and does not need a second negotiation.
+      // Seamlessly update sender tracks across all active peer connections
       await Promise.all(
         Array.from(this.peers.values()).map((peer) =>
           this.attachLocalTracks(peer, acquiredStream!)
@@ -391,19 +393,28 @@ export class WebRTCManager {
         peer.connectionState === "failed"
       ) {
         peer = this.createPeerConnection(senderId);
-        await this.attachLocalTracks(peer, this.localStream);
       } else if (peer.signalingState === "have-local-offer") {
-        // Defensive glare handling for older peers that may still offer at
-        // the same time as this client.
-        await peer.setLocalDescription({ type: "rollback" });
+        // Defensive glare handling: rollback if offer collision occurs
+        try {
+          await peer.setLocalDescription({ type: "rollback" });
+        } catch {
+          // ignore rollback failure
+        }
       }
+
+      // Ensure local media tracks are attached before setting remote description / answering
+      await this.attachLocalTracks(peer, this.localStream);
+
       await peer.setRemoteDescription(new RTCSessionDescription({
         type: "offer",
         sdp: payload.sdp as string,
       }));
 
-      // Drain any ICE candidates received before the remote description was set
+      // Drain any ICE candidates received before remote description was ready
       await this.drainQueuedCandidates(senderId, peer);
+
+      // Check transceivers immediately to register any newly associated incoming tracks
+      this.scanTransceiversForRemoteTracks(senderId, peer);
 
       const answer = await peer.createAnswer();
       await peer.setLocalDescription(answer);
@@ -419,12 +430,17 @@ export class WebRTCManager {
     } else if (event === "webrtc.answer") {
       const peer = this.peers.get(senderId);
       if (peer) {
-        await peer.setRemoteDescription(new RTCSessionDescription({
-          type: "answer",
-          sdp: payload.sdp as string,
-        }));
-        // Drain any ICE candidates received before answer was applied
-        await this.drainQueuedCandidates(senderId, peer);
+        if (peer.signalingState === "have-local-offer") {
+          await peer.setRemoteDescription(new RTCSessionDescription({
+            type: "answer",
+            sdp: payload.sdp as string,
+          }));
+          // Drain any ICE candidates received before answer was applied
+          await this.drainQueuedCandidates(senderId, peer);
+
+          // Check transceivers immediately to register incoming tracks
+          this.scanTransceiversForRemoteTracks(senderId, peer);
+        }
       }
     } else if (event === "webrtc.ice_candidate") {
       const peer = this.peers.get(senderId);
@@ -432,7 +448,7 @@ export class WebRTCManager {
       if (candidateInit && candidateInit.candidate) {
         if (peer && peer.remoteDescription && peer.remoteDescription.type) {
           try {
-            await peer.addIceCandidate(candidateInit);
+            await peer.addIceCandidate(new RTCIceCandidate(candidateInit));
           } catch (err) {
             console.warn("Error adding ICE candidate:", err);
           }
@@ -452,10 +468,70 @@ export class WebRTCManager {
     for (const cand of queued) {
       if (!cand || !cand.candidate) continue;
       try {
-        await peer.addIceCandidate(cand);
+        await peer.addIceCandidate(new RTCIceCandidate(cand));
       } catch (err) {
         console.warn("Error adding queued ICE candidate:", err);
       }
+    }
+  }
+
+  /**
+   * Scans all transceivers to ensure any receiver track that is live is registered
+   * in remoteStreams even if the browser suppressed the track event.
+   */
+  private scanTransceiversForRemoteTracks(participantId: string, peer: RTCPeerConnection): void {
+    try {
+      peer.getTransceivers().forEach((transceiver) => {
+        const track = transceiver.receiver?.track;
+        if (track && track.readyState === "live") {
+          this.registerRemoteTrack(participantId, track);
+        }
+      });
+    } catch {
+      // transceivers scan fallback
+    }
+  }
+
+  /**
+   * Registers an incoming remote track, updates remoteStreams with a fresh MediaStream instance,
+   * listens for track unmute, and notifies React components.
+   */
+  private registerRemoteTrack(
+    participantId: string,
+    track: MediaStreamTrack,
+    incomingStream?: MediaStream
+  ): void {
+    console.log(
+      `[WebRTC] registerRemoteTrack from ${participantId}: kind=${track.kind}, id=${track.id}, readyState=${track.readyState}, muted=${track.muted}`
+    );
+
+    let stream = this.remoteStreams.get(participantId);
+    if (!stream) {
+      stream = incomingStream ? new MediaStream(incomingStream.getTracks()) : new MediaStream();
+    }
+
+    // Replace any stale track of the same kind if IDs differ
+    const existingTrack = stream.getTracks().find((t) => t.kind === track.kind);
+    if (existingTrack && existingTrack.id !== track.id) {
+      stream.removeTrack(existingTrack);
+    }
+    if (!stream.getTracks().some((t) => t.id === track.id)) {
+      stream.addTrack(track);
+    }
+
+    // Always create a new MediaStream reference so React state detection triggers re-render
+    const refreshedStream = new MediaStream(stream.getTracks());
+    this.remoteStreams.set(participantId, refreshedStream);
+
+    // When network packets start arriving, track unmutes — trigger callback again
+    track.onunmute = () => {
+      console.log(`[WebRTC] track onunmute from ${participantId}: kind=${track.kind}`);
+      const cur = this.remoteStreams.get(participantId) || refreshedStream;
+      this.onRemoteTrackCallback?.(participantId, track, new MediaStream(cur.getTracks()));
+    };
+
+    if (this.onRemoteTrackCallback) {
+      this.onRemoteTrackCallback(participantId, track, refreshedStream);
     }
   }
 
@@ -476,12 +552,16 @@ export class WebRTCManager {
     iceRestart = false
   ): Promise<void> {
     if (peer.signalingState !== "stable") return;
-    if (iceRestart) peer.restartIce();
+    if (iceRestart) {
+      try {
+        peer.restartIce();
+      } catch {
+        // restartIce fallback
+      }
+    }
     const offer = await peer.createOffer(iceRestart ? { iceRestart: true } : undefined);
     await peer.setLocalDescription(offer);
 
-    // Send only after setLocalDescription so the SDP and ICE generation belong
-    // to the same negotiation cycle.
     this.sendSignalingMessage("webrtc.offer", {
       target_participant_id: targetParticipantId,
       payload: {
@@ -502,11 +582,17 @@ export class WebRTCManager {
     this.iceRestartAttempts.set(participantId, attempts + 1);
     console.warn(`[WebRTC] Initiating ICE recovery attempt ${attempts + 1}/3 for ${participantId}...`);
     setTimeout(() => {
-      if (peer.connectionState === "connected" || peer.iceConnectionState === "connected") return;
+      if (
+        peer.connectionState === "connected" ||
+        peer.iceConnectionState === "connected" ||
+        peer.iceConnectionState === "completed"
+      ) {
+        return;
+      }
       void this.createAndSendOffer(peer, participantId, true).catch((error) => {
         console.warn(`[WebRTC] ICE recovery offer failed for ${participantId}:`, error);
       });
-    }, 1200);
+    }, 1500);
   }
 
   private createPeerConnection(participantId: string): RTCPeerConnection {
@@ -518,16 +604,10 @@ export class WebRTCManager {
 
     const peer = new RTCPeerConnection({
       iceServers: getIceServers(),
-      iceCandidatePoolSize: 4,
+      iceCandidatePoolSize: 2,
+      bundlePolicy: "max-bundle",
+      rtcpMuxPolicy: "require",
     });
-
-    // Allocate transceivers so SDP negotiation always reserves audio and video channels
-    try {
-      peer.addTransceiver("audio", { direction: "sendrecv" });
-      peer.addTransceiver("video", { direction: "sendrecv" });
-    } catch {
-      // transceiver fallback
-    }
 
     peer.onicecandidate = (e) => {
       if (e.candidate && e.candidate.candidate) {
@@ -544,6 +624,7 @@ export class WebRTCManager {
       console.log(`[WebRTC] Peer ${participantId} iceConnectionState=${peer.iceConnectionState}`);
       if (peer.iceConnectionState === "connected" || peer.iceConnectionState === "completed") {
         this.iceRestartAttempts.delete(participantId);
+        this.scanTransceiversForRemoteTracks(participantId, peer);
       } else if (peer.iceConnectionState === "failed" || peer.iceConnectionState === "disconnected") {
         this.attemptIceRecovery(participantId, peer);
       }
@@ -553,6 +634,7 @@ export class WebRTCManager {
       console.log(`[WebRTC] Peer ${participantId} connectionState=${peer.connectionState}`);
       if (peer.connectionState === "connected") {
         this.iceRestartAttempts.delete(participantId);
+        this.scanTransceiversForRemoteTracks(participantId, peer);
         return;
       }
       if (peer.connectionState === "failed") {
@@ -561,33 +643,11 @@ export class WebRTCManager {
     };
 
     peer.ontrack = (e) => {
-      console.log(`[WebRTC] ontrack from ${participantId}: kind=${e.track.kind}, id=${e.track.id}, readyState=${e.track.readyState}`);
-      let stream = this.remoteStreams.get(participantId);
-      if (!stream) {
-        stream = new MediaStream();
-      }
-
-      // Replace any existing track of the same kind
-      const existingTrack = stream.getTracks().find((t) => t.kind === e.track.kind);
-      if (existingTrack) {
-        stream.removeTrack(existingTrack);
-      }
-      stream.addTrack(e.track);
-
-      // Re-create a fresh MediaStream instance so React components detect new object reference
-      const refreshedStream = new MediaStream(stream.getTracks());
-      this.remoteStreams.set(participantId, refreshedStream);
-
-      // Ensure that when track unmutes (packets start arriving), callback is triggered again
-      e.track.onunmute = () => {
-        console.log(`[WebRTC] track onunmute from ${participantId}: kind=${e.track.kind}`);
-        const currentStream = this.remoteStreams.get(participantId) || refreshedStream;
-        this.onRemoteTrackCallback?.(participantId, e.track, new MediaStream(currentStream.getTracks()));
-      };
-
-      if (this.onRemoteTrackCallback) {
-        this.onRemoteTrackCallback(participantId, e.track, refreshedStream);
-      }
+      console.log(
+        `[WebRTC] ontrack from ${participantId}: kind=${e.track.kind}, id=${e.track.id}, readyState=${e.track.readyState}`
+      );
+      const stream = e.streams && e.streams[0] ? e.streams[0] : undefined;
+      this.registerRemoteTrack(participantId, e.track, stream);
     };
 
     this.peers.set(participantId, peer);
@@ -600,19 +660,27 @@ export class WebRTCManager {
   ): Promise<void> {
     if (!stream) return;
 
-    await Promise.all(
-      stream.getTracks().map(async (track) => {
-        const transceiver = peer
-          .getTransceivers()
-          .find((candidate) => candidate.receiver.track.kind === track.kind);
-
-        if (transceiver) {
-          await transceiver.sender.replaceTrack(track);
-        } else {
-          peer.addTrack(track, stream);
+    const currentSenders = peer.getSenders();
+    for (const track of stream.getTracks()) {
+      const existingSender = currentSenders.find(
+        (s) => s.track && s.track.kind === track.kind
+      );
+      if (existingSender) {
+        if (existingSender.track !== track) {
+          try {
+            await existingSender.replaceTrack(track);
+          } catch (err) {
+            console.warn(`[WebRTC] replaceTrack error for ${track.kind}:`, err);
+          }
         }
-      })
-    );
+      } else {
+        try {
+          peer.addTrack(track, stream);
+        } catch (err) {
+          console.warn(`[WebRTC] addTrack error for ${track.kind}:`, err);
+        }
+      }
+    }
   }
 
   removeParticipant(participantId: string): void {
