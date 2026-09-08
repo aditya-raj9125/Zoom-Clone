@@ -256,7 +256,7 @@ npx tsc -p apps/web/tsconfig.json --noEmit
 npm run build:web
 ```
 
-The current backend suite contains 66 passing tests. Exact counts may change as features evolve; the commands above are the source of truth.
+The current backend suite contains 74 passing tests. Exact counts may change as features evolve; the commands above are the source of truth.
 
 ## Deployment
 
@@ -273,7 +273,7 @@ See [CI/CD and deployment](docs/CICD_SETUP.md) for environment variables, deploy
 - WebRTC media is a peer-to-peer mesh. It is suitable for small rooms; larger rooms should move media routing to an SFU.
 - The current signaling registry is in memory. Multi-instance deployment requires shared pub/sub, such as Redis.
 - SQLite on Render uses the configured filesystem path and should be replaced with managed Postgres for durable production storage.
-- A TURN server is not configured. Some corporate or symmetric-NAT networks may require TURN for media connectivity.
+- Configure `NEXT_PUBLIC_WEBRTC_ICE_SERVERS` with TURN credentials in production. STUN-only connectivity is not reliable across corporate, mobile, or symmetric-NAT networks.
 - Synthetic media tracks are used when browser media devices are unavailable, allowing restricted/headless environments to keep functioning.
 - The project is an educational/product prototype and does not claim Zoom’s production security, scale or compliance guarantees.
 

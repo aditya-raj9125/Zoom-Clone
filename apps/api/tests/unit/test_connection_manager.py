@@ -3,6 +3,7 @@
 import pytest
 from starlette.websockets import WebSocketState
 
+from app.features.realtime import websocket as websocket_module
 from app.features.realtime.events import WSEvent
 from app.features.realtime.manager import ConnectionManager
 
@@ -51,3 +52,37 @@ async def test_stale_socket_cannot_disconnect_reconnected_session() -> None:
 
     assert manager.is_connected("meeting", "peer")
     assert not new_socket.closed
+
+
+@pytest.mark.asyncio
+async def test_offer_relay_preserves_target_and_injects_sender(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The signaling relay must never alter target routing or drop SDP payload."""
+
+    class CapturingManager:
+        def __init__(self) -> None:
+            self.calls: list[tuple[str, str, WSEvent]] = []
+
+        async def send_to_participant(
+            self, meeting_id: str, participant_id: str, event: WSEvent
+        ) -> None:
+            self.calls.append((meeting_id, participant_id, event))
+
+    manager = CapturingManager()
+    monkeypatch.setattr(websocket_module, "connection_manager", manager)
+
+    await websocket_module._handle_inbound(
+        '{"type":"webrtc.offer","target_participant_id":"guest","payload":{"sdp":"offer-sdp","type":"offer"}}',
+        "meeting",
+        "host",
+    )
+
+    assert len(manager.calls) == 1
+    meeting_id, target, event = manager.calls[0]
+    assert meeting_id == "meeting"
+    assert target == "guest"
+    assert event.type == "webrtc.offer"
+    assert event.payload == {
+        "sdp": "offer-sdp",
+        "type": "offer",
+        "from_participant_id": "host",
+    }

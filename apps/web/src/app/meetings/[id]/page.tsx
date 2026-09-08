@@ -246,6 +246,7 @@ export default function MeetingRoomPage() {
 
       // 4. Initialize WebRTC Manager
       const rtc = new WebRTCManager(
+        joinRes.participant_id,
         (event, data) => {
           if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
             wsRef.current.send(JSON.stringify({ type: event, ...(data as object) }));
@@ -379,6 +380,20 @@ export default function MeetingRoomPage() {
                 p.participant_id === payload.participant_id
                   ? { ...p, video_enabled: payload.video_enabled }
                   : p
+              )
+            );
+          } else if (type === "participant.muted") {
+            setParticipants((prev) =>
+              prev.map((p) =>
+                p.participant_id === payload.participant_id
+                  ? { ...p, audio_enabled: false, muted_by_host: Boolean(payload.by_host) }
+                  : p
+              )
+            );
+          } else if (type === "host.mute_all") {
+            setParticipants((prev) =>
+              prev.map((p) =>
+                p.is_host ? p : { ...p, audio_enabled: false, muted_by_host: true }
               )
             );
           } else if (type === "chat.message_created") {

@@ -12,6 +12,37 @@ export interface LocalMediaState {
   screenStream: MediaStream | null;
 }
 
+const DEFAULT_ICE_SERVERS: RTCIceServer[] = [
+  { urls: "stun:stun.l.google.com:19302" },
+  { urls: "stun:stun.cloudflare.com:3478" },
+];
+
+/**
+ * Reads the deploy-time ICE configuration. A TURN relay is required for
+ * reliable media on mobile, corporate, CGNAT, and symmetric-NAT networks.
+ *
+ * Example NEXT_PUBLIC_WEBRTC_ICE_SERVERS value:
+ * [{"urls":"stun:stun.example.com:3478"},{"urls":"turn:turn.example.com:3478?transport=udp","username":"...","credential":"..."}]
+ */
+function getIceServers(): RTCIceServer[] {
+  const raw = process.env.NEXT_PUBLIC_WEBRTC_ICE_SERVERS;
+  if (!raw) return DEFAULT_ICE_SERVERS;
+
+  try {
+    const configured: unknown = JSON.parse(raw);
+    if (!Array.isArray(configured)) return DEFAULT_ICE_SERVERS;
+    const valid = configured.filter((server): server is RTCIceServer => {
+      if (!server || typeof server !== "object" || !("urls" in server)) return false;
+      const urls = (server as { urls?: unknown }).urls;
+      return typeof urls === "string" || (Array.isArray(urls) && urls.every((url) => typeof url === "string"));
+    });
+    return valid.length > 0 ? valid : DEFAULT_ICE_SERVERS;
+  } catch {
+    console.warn("Invalid NEXT_PUBLIC_WEBRTC_ICE_SERVERS; using STUN fallback.");
+    return DEFAULT_ICE_SERVERS;
+  }
+}
+
 export class WebRTCManager {
   private localStream: MediaStream | null = null;
   private screenStream: MediaStream | null = null;
@@ -20,6 +51,7 @@ export class WebRTCManager {
   private onRemoteLeaveCallback?: (participantId: string) => void;
 
   constructor(
+    private localParticipantId: string,
     private sendSignalingMessage: (event: string, data: unknown) => void,
     onRemoteTrack?: (participantId: string, track: MediaStreamTrack, stream: MediaStream) => void,
     onRemoteLeave?: (participantId: string) => void
@@ -286,6 +318,7 @@ export class WebRTCManager {
 
   private remoteStreams: Map<string, MediaStream> = new Map();
   private iceCandidatesQueue: Map<string, RTCIceCandidateInit[]> = new Map();
+  private iceRestartAttempts: Map<string, number> = new Map();
   // WebSocket message handlers may run concurrently while SDP operations are
   // still pending. Serialize signaling operations per peer.
   private signalingQueues: Map<string, Promise<void>> = new Map();
@@ -419,15 +452,26 @@ export class WebRTCManager {
 
     const peer = this.createPeerConnection(targetParticipantId);
     await this.attachLocalTracks(peer, this.localStream);
-    const offer = await peer.createOffer();
+    await this.createAndSendOffer(peer, targetParticipantId);
+  }
+
+  private async createAndSendOffer(
+    peer: RTCPeerConnection,
+    targetParticipantId: string,
+    iceRestart = false
+  ): Promise<void> {
+    if (peer.signalingState !== "stable") return;
+    if (iceRestart) peer.restartIce();
+    const offer = await peer.createOffer(iceRestart ? { iceRestart: true } : undefined);
     await peer.setLocalDescription(offer);
 
-    // Send offer with InboundMessage format
+    // Send only after setLocalDescription so the SDP and ICE generation belong
+    // to the same negotiation cycle.
     this.sendSignalingMessage("webrtc.offer", {
       target_participant_id: targetParticipantId,
       payload: {
-        sdp: offer.sdp,
-        type: "offer",
+        sdp: peer.localDescription?.sdp,
+        type: peer.localDescription?.type || "offer",
       },
     });
   }
@@ -440,13 +484,8 @@ export class WebRTCManager {
     }
 
     const peer = new RTCPeerConnection({
-      iceServers: [
-        { urls: "stun:stun.l.google.com:19302" },
-        { urls: "stun:stun1.l.google.com:19302" },
-        { urls: "stun:stun2.l.google.com:19302" },
-        { urls: "stun:stun.cloudflare.com:3478" },
-        { urls: "stun:global.stun.twilio.com:3478" },
-      ],
+      iceServers: getIceServers(),
+      iceCandidatePoolSize: 4,
     });
 
     // Allocate transceivers so SDP negotiation always reserves audio and video channels
@@ -455,11 +494,6 @@ export class WebRTCManager {
       peer.addTransceiver("video", { direction: "sendrecv" });
     } catch {
       // transceiver fallback
-    }
-
-    // Attach local media tracks to senders
-    if (this.localStream) {
-      void this.attachLocalTracks(peer, this.localStream);
     }
 
     peer.onicecandidate = (e) => {
@@ -471,6 +505,29 @@ export class WebRTCManager {
           },
         });
       }
+    };
+
+    peer.onconnectionstatechange = () => {
+      if (peer.connectionState === "connected") {
+        this.iceRestartAttempts.delete(participantId);
+        return;
+      }
+      if (peer.connectionState !== "failed") return;
+
+      // Keep one deterministic offer owner per pair during recovery too.
+      // Otherwise both peers can restart ICE simultaneously and reintroduce
+      // offer glare after a transient network failure.
+      if (this.localParticipantId.localeCompare(participantId) >= 0) return;
+
+      const attempts = this.iceRestartAttempts.get(participantId) || 0;
+      if (attempts >= 1) {
+        console.error(`[WebRTC] Connection failed permanently for ${participantId}.`);
+        return;
+      }
+      this.iceRestartAttempts.set(participantId, attempts + 1);
+      void this.createAndSendOffer(peer, participantId, true).catch((error) => {
+        console.warn(`[WebRTC] ICE restart failed for ${participantId}:`, error);
+      });
     };
 
     peer.ontrack = (e) => {
@@ -533,6 +590,7 @@ export class WebRTCManager {
     }
     this.remoteStreams.delete(participantId);
     this.iceCandidatesQueue.delete(participantId);
+    this.iceRestartAttempts.delete(participantId);
   }
 
   destroy(): void {
@@ -550,6 +608,7 @@ export class WebRTCManager {
     this.peers.clear();
     this.remoteStreams.clear();
     this.iceCandidatesQueue.clear();
+    this.iceRestartAttempts.clear();
     this.signalingQueues.clear();
   }
 }

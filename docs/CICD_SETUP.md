@@ -29,6 +29,9 @@ Configure the Vercel project with the repository and `apps/web` as its applicati
 ```env
 NEXT_PUBLIC_API_URL=https://your-render-service.onrender.com/api/v1
 NEXT_PUBLIC_WS_URL=wss://your-render-service.onrender.com/api/v1/ws
+# Required for reliable media across different networks. Replace with your
+# TURN provider's short-lived credentials before deploying.
+NEXT_PUBLIC_WEBRTC_ICE_SERVERS=[{"urls":"stun:stun.example.com:3478"},{"urls":"turn:turn.example.com:3478?transport=udp","username":"<username>","credential":"<credential>"}]
 ```
 
 The WebSocket URL must use `wss://` when the Vercel app is served over HTTPS.
@@ -69,7 +72,7 @@ If hooks are absent, the hosting platforms’ native Git integration can deploy 
 - [ ] Replace the development JWT secret.
 - [ ] Use a durable managed database instead of ephemeral SQLite storage.
 - [ ] Set exact frontend origins in `CORS_ORIGINS`.
-- [ ] Configure a TURN server for restrictive networks.
+- [ ] Configure `NEXT_PUBLIC_WEBRTC_ICE_SERVERS` with a TURN relay and credentials.
 - [ ] Use `wss://` for production WebSockets.
 - [ ] Confirm `/api/v1/health` is green after deploy.
 - [ ] Verify meeting join, media permissions and leave cleanup from two browser sessions.
