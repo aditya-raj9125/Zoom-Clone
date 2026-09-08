@@ -9,8 +9,8 @@ export function AnnouncementBanner() {
   if (!isVisible) return null;
 
   return (
-    <div className="w-full bg-[#00052D] px-4 pt-3 pb-2 transition-all duration-300">
-      <div className="mx-auto max-w-7xl flex items-center justify-between gap-4 rounded-full bg-white/10 px-5 py-2 text-white shadow-inner backdrop-blur-md border border-white/10 text-xs sm:text-sm">
+    <div className="w-full bg-[#0F3596] px-4 pt-3 pb-2 transition-all duration-300">
+      <div className="mx-auto max-w-7xl flex items-center justify-between gap-4 rounded-full bg-white/10 px-5 py-2 text-white shadow-inner backdrop-blur-md border border-white/15 text-xs sm:text-sm">
         <div className="flex flex-1 items-center justify-center gap-3 text-center sm:text-left flex-wrap">
           <span className="font-normal text-slate-100">
             AI note taking across platforms that&apos;s secure, personalized, and under your control.
