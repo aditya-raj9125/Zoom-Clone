@@ -154,12 +154,13 @@ $env:PYTHONPATH = "."
 
 ---
 
-## 6. CI/CD & Deployment
+## 6. Auto-Deploy to Production
 
-Automated with **GitHub Actions** for every push and pull request:
-- **Continuous Integration (CI):** Parallel execution of backend test suite (66 tests) and frontend TypeScript/Next.js production build.
-- **Continuous Deployment (CD):** Automatic deployment to **Vercel** (`zoom-clone-web-gamma.vercel.app`) and **Render** (`zoom-clone-hvoi.onrender.com`) on commit to `main`.
-- See the full [CI/CD Setup & Automation Guide](docs/CICD_SETUP.md) for details on setting up Deploy Hooks.
+Automated with **GitHub Actions** on every commit to `main`:
+- **Direct Auto-Deploy:** Bypasses pre-deploy test checks and immediately triggers production deployments.
+- **Vercel (Frontend):** Auto-deploys `apps/web` to `https://zoom-clone-web-gamma.vercel.app`.
+- **Render (Backend):** Auto-deploys `apps/api` to `https://zoom-clone-hvoi.onrender.com`.
+- See the [Auto-Deploy Guide](docs/CICD_SETUP.md) for details on Deploy Hooks.
 
 ---
 
