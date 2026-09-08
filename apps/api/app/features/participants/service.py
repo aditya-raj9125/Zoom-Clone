@@ -25,7 +25,6 @@ from app.features.participants.schemas import JoinMeetingResponse, ParticipantRe
 from app.features.realtime.events import (
     make_audio_changed,
     make_host_mute_all,
-    make_participant_joined,
     make_participant_left,
     make_participant_muted,
     make_participant_removed,
@@ -225,20 +224,6 @@ class ParticipantService:
             metadata={"display_name": display_name},
         )
         await self._db.commit()
-
-        # Broadcast to other participants
-        await connection_manager.broadcast_to_meeting(
-            meeting.meeting_id,
-            make_participant_joined(
-                meeting_id=meeting.meeting_id,
-                participant_id=participant_id,
-                display_name=display_name,
-                role=participant.role.value,
-                is_host=False,
-                audio_enabled=True,
-                video_enabled=True,
-            ),
-        )
 
         meeting_response = self._meeting_service._build_meeting_response(meeting)
 

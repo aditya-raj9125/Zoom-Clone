@@ -41,6 +41,10 @@ class ConnectionManager:
     def __init__(self) -> None:
         # meeting_id → {participant_id → WebSocket}
         self._connections: dict[str, dict[str, WebSocket]] = defaultdict(dict)
+        # A REST join can complete just before the participant opens its
+        # WebSocket. Keep signaling messages briefly so the first offer/ICE
+        # candidates are delivered when that socket registers.
+        self._pending_signaling: dict[tuple[str, str], list[WSEvent]] = defaultdict(list)
 
     # ---------------------------------------------------------------------------
     # Connection lifecycle
@@ -55,6 +59,20 @@ class ConnectionManager:
         """Accept the WebSocket and register the connection."""
         await websocket.accept()
         self._connections[meeting_id][participant_id] = websocket
+
+        pending = self._pending_signaling.pop((meeting_id, participant_id), [])
+        for event in pending:
+            try:
+                await websocket.send_text(event.to_json())
+            except Exception as exc:
+                logger.warning(
+                    "Failed to flush pending signaling to participant %s in meeting %s: %s",
+                    participant_id,
+                    meeting_id,
+                    exc,
+                )
+                break
+
         logger.info(
             "WebSocket connected | meeting=%s participant=%s",
             meeting_id,
@@ -64,6 +82,7 @@ class ConnectionManager:
     async def disconnect(self, meeting_id: str, participant_id: str) -> None:
         """Remove the connection from the registry and close the socket gracefully."""
         ws = self._connections.get(meeting_id, {}).pop(participant_id, None)
+        self._pending_signaling.pop((meeting_id, participant_id), None)
         if ws and ws.client_state == WebSocketState.CONNECTED:
             with contextlib.suppress(Exception):
                 await ws.close()
@@ -107,6 +126,16 @@ class ConnectionManager:
                 await ws.send_text(event.to_json())
             except Exception as exc:
                 logger.warning("Failed to send to participant %s: %s", participant_id, exc)
+        elif event.type in {
+            "webrtc.offer",
+            "webrtc.answer",
+            "webrtc.ice_candidate",
+        }:
+            # Preserve ordering: offer and following ICE candidates are
+            # replayed in the same order when the target socket connects.
+            pending = self._pending_signaling[(meeting_id, participant_id)]
+            if len(pending) < 100:
+                pending.append(event)
 
     # ---------------------------------------------------------------------------
     # Helpers
@@ -123,6 +152,8 @@ class ConnectionManager:
         for participant_id in list(self._connections.get(meeting_id, {}).keys()):
             await self.disconnect(meeting_id, participant_id)
         self._connections.pop(meeting_id, None)
+        for key in [key for key in self._pending_signaling if key[0] == meeting_id]:
+            self._pending_signaling.pop(key, None)
 
 
 # ---------------------------------------------------------------------------

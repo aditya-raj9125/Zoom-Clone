@@ -85,24 +85,34 @@ export class WebRTCManager {
     }
 
     if (acquiredStream) {
+      const previousStream = this.localStream;
       this.localStream = acquiredStream;
-      // Also add newly acquired tracks to all existing peer connections
-      this.peers.forEach((peer) => {
-        acquiredStream!.getTracks().forEach((track) => {
-          const senders = peer.getSenders();
-          const existingSender = senders.find((s) => s.track?.kind === track.kind);
-          if (existingSender) {
-            existingSender.replaceTrack(track);
-          } else {
-            peer.addTrack(track, acquiredStream!);
-          }
-        });
-      });
+      if (previousStream && previousStream !== acquiredStream) {
+        previousStream.getTracks().forEach((track) => track.stop());
+      }
+
+      // Replace the sender track on the existing transceiver. A participant
+      // may have joined with camera/mic off, so the peer connection already
+      // has its media transceivers and does not need a second negotiation.
+      await Promise.all(
+        Array.from(this.peers.values()).map((peer) =>
+          this.attachLocalTracks(peer, acquiredStream!)
+        )
+      );
       return acquiredStream;
     }
 
     // Fallback: Generate a synthetic canvas video track + silent audio track
+    const previousStream = this.localStream;
     this.localStream = this.createSyntheticStream(video, audio);
+    if (previousStream && previousStream !== this.localStream) {
+      previousStream.getTracks().forEach((track) => track.stop());
+    }
+    await Promise.all(
+      Array.from(this.peers.values()).map((peer) =>
+        this.attachLocalTracks(peer, this.localStream)
+      )
+    );
     return this.localStream;
   }
 
@@ -276,6 +286,9 @@ export class WebRTCManager {
 
   private remoteStreams: Map<string, MediaStream> = new Map();
   private iceCandidatesQueue: Map<string, RTCIceCandidateInit[]> = new Map();
+  // WebSocket message handlers may run concurrently while SDP operations are
+  // still pending. Serialize signaling operations per peer.
+  private signalingQueues: Map<string, Promise<void>> = new Map();
 
   getRemoteStream(participantId: string): MediaStream | null {
     return this.remoteStreams.get(participantId) || null;
@@ -290,13 +303,52 @@ export class WebRTCManager {
    * Handle incoming WebRTC signaling messages from WebSocket
    */
   async handleSignalingEvent(event: string, payload: Record<string, unknown>): Promise<void> {
-    const senderId = (payload.from_participant_id || payload.sender_participant_id) as string;
+    const senderId = (
+      payload.from_participant_id ||
+      payload.sender_participant_id ||
+      payload.participant_id
+    ) as string;
     if (!senderId) return;
+
+    const previous = this.signalingQueues.get(senderId) || Promise.resolve();
+    const current = previous
+      .catch(() => undefined)
+      .then(() => this.processSignalingEvent(event, payload, senderId));
+    this.signalingQueues.set(senderId, current);
+
+    try {
+      await current;
+    } finally {
+      if (this.signalingQueues.get(senderId) === current) {
+        this.signalingQueues.delete(senderId);
+      }
+    }
+  }
+
+  private async processSignalingEvent(
+    event: string,
+    payload: Record<string, unknown>,
+    senderId: string
+  ): Promise<void> {
+    if (event === "participant.left" || event === "participant.removed") {
+      this.closePeer(senderId);
+      this.onRemoteLeaveCallback?.(senderId);
+      return;
+    }
 
     if (event === "webrtc.offer") {
       let peer = this.peers.get(senderId);
-      if (!peer) {
+      if (
+        !peer ||
+        peer.signalingState === "closed" ||
+        peer.connectionState === "failed"
+      ) {
         peer = this.createPeerConnection(senderId);
+        await this.attachLocalTracks(peer, this.localStream);
+      } else if (peer.signalingState === "have-local-offer") {
+        // Defensive glare handling for older peers that may still offer at
+        // the same time as this client.
+        await peer.setLocalDescription({ type: "rollback" });
       }
       await peer.setRemoteDescription(new RTCSessionDescription({
         type: "offer",
@@ -344,11 +396,6 @@ export class WebRTCManager {
           this.iceCandidatesQueue.set(senderId, q);
         }
       }
-    } else if (event === "participant.left" || event === "participant.removed") {
-      this.closePeer(senderId);
-      this.remoteStreams.delete(senderId);
-      this.iceCandidatesQueue.delete(senderId);
-      this.onRemoteLeaveCallback?.(senderId);
     }
   }
 
@@ -368,7 +415,10 @@ export class WebRTCManager {
    * Initiate call to a newly joined participant
    */
   async callParticipant(targetParticipantId: string): Promise<void> {
+    if (this.hasPeer(targetParticipantId)) return;
+
     const peer = this.createPeerConnection(targetParticipantId);
+    await this.attachLocalTracks(peer, this.localStream);
     const offer = await peer.createOffer();
     await peer.setLocalDescription(offer);
 
@@ -409,20 +459,7 @@ export class WebRTCManager {
 
     // Attach local media tracks to senders
     if (this.localStream) {
-      this.localStream.getTracks().forEach((track) => {
-        const senders = peer.getSenders();
-        const existingSender = senders.find((s) => s.track?.kind === track.kind);
-        if (existingSender) {
-          existingSender.replaceTrack(track);
-        } else {
-          const matchingTransceiver = peer.getTransceivers().find((t) => t.receiver?.track?.kind === track.kind);
-          if (matchingTransceiver && matchingTransceiver.sender) {
-            matchingTransceiver.sender.replaceTrack(track);
-          } else {
-            peer.addTrack(track, this.localStream!);
-          }
-        }
-      });
+      void this.attachLocalTracks(peer, this.localStream);
     }
 
     peer.onicecandidate = (e) => {
@@ -463,12 +500,39 @@ export class WebRTCManager {
     return peer;
   }
 
+  private async attachLocalTracks(
+    peer: RTCPeerConnection,
+    stream: MediaStream | null
+  ): Promise<void> {
+    if (!stream) return;
+
+    await Promise.all(
+      stream.getTracks().map(async (track) => {
+        const transceiver = peer
+          .getTransceivers()
+          .find((candidate) => candidate.receiver.track.kind === track.kind);
+
+        if (transceiver) {
+          await transceiver.sender.replaceTrack(track);
+        } else {
+          peer.addTrack(track, stream);
+        }
+      })
+    );
+  }
+
+  removeParticipant(participantId: string): void {
+    this.closePeer(participantId);
+  }
+
   private closePeer(participantId: string): void {
     const peer = this.peers.get(participantId);
     if (peer) {
       peer.close();
       this.peers.delete(participantId);
     }
+    this.remoteStreams.delete(participantId);
+    this.iceCandidatesQueue.delete(participantId);
   }
 
   destroy(): void {
@@ -484,5 +548,8 @@ export class WebRTCManager {
     }
     this.peers.forEach((peer) => peer.close());
     this.peers.clear();
+    this.remoteStreams.clear();
+    this.iceCandidatesQueue.clear();
+    this.signalingQueues.clear();
   }
 }

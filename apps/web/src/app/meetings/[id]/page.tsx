@@ -86,8 +86,10 @@ export default function MeetingRoomPage() {
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [copiedLink, setCopiedLink] = useState(false);
 
-  // Force re-render counter when remote streams attach
-  const [streamVersion, setStreamVersion] = useState(0);
+  // Keep remote streams in React state so a newly attached track is rendered
+  // immediately instead of reading mutable WebRTC state during render.
+  const [remoteStreams, setRemoteStreams] = useState<Record<string, MediaStream>>({});
+  const reactionSequenceRef = useRef(0);
 
   // Video element refs
   const localVideoRef = useRef<HTMLVideoElement>(null);
@@ -107,7 +109,7 @@ export default function MeetingRoomPage() {
     }
   };
 
-  // Re-attach local stream whenever videoEnabled, joined, or streamVersion updates
+  // Re-attach local stream whenever videoEnabled or joined changes.
   useEffect(() => {
     if (localVideoRef.current && webrtcRef.current) {
       const stream = webrtcRef.current.getLocalStream();
@@ -118,7 +120,7 @@ export default function MeetingRoomPage() {
         localVideoRef.current.srcObject = null;
       }
     }
-  }, [videoEnabled, joined, streamVersion]);
+  }, [videoEnabled, joined]);
 
   // Helper toast trigger
   const showToast = (msg: string) => {
@@ -255,11 +257,15 @@ export default function MeetingRoomPage() {
         },
         (participantId, track, stream) => {
           console.log("Remote track from:", participantId, track.kind);
-          setStreamVersion((v) => v + 1);
+          setRemoteStreams((prev) => ({ ...prev, [participantId]: stream }));
         },
         (participantId) => {
           console.log("Participant left call:", participantId);
-          setStreamVersion((v) => v + 1);
+          setRemoteStreams((prev) => {
+            const next = { ...prev };
+            delete next[participantId];
+            return next;
+          });
         }
       );
       webrtcRef.current = rtc;
@@ -272,6 +278,15 @@ export default function MeetingRoomPage() {
       setAudioEnabled(selectedAudio);
       setVideoEnabled(selectedVideo);
 
+      // The join endpoint defaults media state to enabled. Publish the actual
+      // pre-join choices so connected peers render the same state immediately.
+      await Promise.all([
+        api.toggleAudio(meetingId, joinRes.participant_id, selectedAudio),
+        api.toggleVideo(meetingId, joinRes.participant_id, selectedVideo),
+      ]).catch((err) => {
+        console.warn("Failed to publish initial media state:", err);
+      });
+
       // 5. Connect WebSocket
       const wsUrl = api.getWebSocketUrl(meetingId, joinRes.participant_id);
       const ws = new WebSocket(wsUrl);
@@ -280,20 +295,20 @@ export default function MeetingRoomPage() {
       ws.onopen = () => {
         console.log("WebSocket connection established to", wsUrl);
 
-        // Initiate call to existing participants in the room if any
-        setTimeout(() => {
-          cleanedList.forEach((p) => {
-            if (
-              p.participant_id !== joinRes.participant_id &&
-              !rtc.hasPeer(p.participant_id)
-            ) {
-              console.log("Initiating WebRTC call to existing peer:", p.participant_id);
-              rtc.callParticipant(p.participant_id).catch((err) => {
-                console.warn("Call to existing participant failed:", err);
-              });
-            }
-          });
-        }, 800);
+        // Exactly one side initiates each pair. This prevents simultaneous
+        // offers when both peers connect at nearly the same time.
+        cleanedList.forEach((p) => {
+          if (
+            p.participant_id !== joinRes.participant_id &&
+            joinRes.participant_id.localeCompare(p.participant_id) < 0 &&
+            !rtc.hasPeer(p.participant_id)
+          ) {
+            console.log("Initiating WebRTC call to existing peer:", p.participant_id);
+            rtc.callParticipant(p.participant_id).catch((err) => {
+              console.warn("Call to existing participant failed:", err);
+            });
+          }
+        });
       };
 
       ws.onmessage = async (e) => {
@@ -338,12 +353,13 @@ export default function MeetingRoomPage() {
 
               showToast(`${newName} joined the meeting`);
 
-              // Initiate WebRTC call to newly joined peer
-              setTimeout(() => {
+              // The server emits participant.joined after the new peer's
+              // WebSocket is registered. Use a deterministic initiator.
+              if (joinRes.participant_id.localeCompare(newPid) < 0) {
                 rtc.callParticipant(newPid).catch((err) => {
                   console.warn("Error calling new participant:", err);
                 });
-              }, 400);
+              }
             }
           } else if (
             type === "webrtc.offer" ||
@@ -354,8 +370,8 @@ export default function MeetingRoomPage() {
           } else if (type === "participant.left" || type === "participant.removed") {
             const leftPid = payload.participant_id;
             setParticipants((prev) => prev.filter((p) => p.participant_id !== leftPid));
+            rtc.removeParticipant(leftPid);
             showToast(`${payload.display_name || "A participant"} left the meeting`);
-            setStreamVersion((v) => v + 1);
           } else if (type === "participant.audio_changed") {
             setParticipants((prev) =>
               prev.map((p) =>
@@ -458,7 +474,6 @@ export default function MeetingRoomPage() {
         }
       }
       setVideoEnabled(true);
-      setStreamVersion((v) => v + 1);
       if (myParticipantId) {
         api.toggleVideo(meetingId, myParticipantId, true).catch(() => {});
       }
@@ -492,8 +507,12 @@ export default function MeetingRoomPage() {
 
   // Send Reaction
   const handleSendReaction = async (emoji: string, rxnType: ReactionType) => {
-    const id = Math.random().toString();
-    setActiveReactions((prev) => [...prev, { id, emoji, x: 20 + Math.random() * 60 }]);
+    const sequence = ++reactionSequenceRef.current;
+    const id = `reaction-${sequence}`;
+    setActiveReactions((prev) => [
+      ...prev,
+      { id, emoji, x: 20 + ((sequence * 37) % 60) },
+    ]);
     setTimeout(() => {
       setActiveReactions((prev) => prev.filter((r) => r.id !== id));
     }, 2500);
@@ -883,7 +902,7 @@ export default function MeetingRoomPage() {
                   {activeRemoteSpeaker && (
                     <RemoteVideoTile
                       participant={activeRemoteSpeaker}
-                      stream={webrtcRef.current?.getRemoteStream(activeRemoteSpeaker.participant_id) || null}
+                      stream={remoteStreams[activeRemoteSpeaker.participant_id] || null}
                       isSpeaking={true}
                       isMainStage={true}
                       className="w-full h-full max-h-[600px] aspect-[16/9]"
@@ -950,7 +969,7 @@ export default function MeetingRoomPage() {
                     <RemoteVideoTile
                       key={p.participant_id}
                       participant={p}
-                      stream={webrtcRef.current?.getRemoteStream(p.participant_id) || null}
+                      stream={remoteStreams[p.participant_id] || null}
                       isSpeaking={p.participant_id === activeRemoteSpeaker?.participant_id}
                       className="w-full aspect-[16/10]"
                     />
