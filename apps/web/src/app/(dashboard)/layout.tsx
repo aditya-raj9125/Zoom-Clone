@@ -22,6 +22,7 @@ import {
 } from "lucide-react";
 import { UserProfileDropdown } from "@/components/dashboard/UserProfileDropdown";
 import { MoreAppsFlyout } from "@/components/dashboard/MoreAppsFlyout";
+import { ProfileSettingsModal } from "@/components/dashboard/ProfileSettingsModal";
 import { api } from "@/lib/api";
 import { getCurrentUserFromToken, getStoredUser, isLoggedIn, setStoredUser } from "@/lib/auth";
 import type { MeetingListItem } from "@zoom-clone/contracts";
@@ -35,13 +36,14 @@ export default function DashboardLayout({
   const router = useRouter();
 
   const [currentUser, setCurrentUser] = useState({
-    displayName: "Zoom User",
+    displayName: "Aditya Raj",
     email: "",
     avatarUrl: null as string | null,
   });
 
   const [userStatus, setUserStatus] = useState("Available");
   const [profileOpen, setProfileOpen] = useState(false);
+  const [profileSettingsOpen, setProfileSettingsOpen] = useState(false);
   const [moreAppsOpen, setMoreAppsOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<"home" | "meetings" | "chat">("home");
   const [recentMeetings, setRecentMeetings] = useState<MeetingListItem[]>([]);
@@ -200,6 +202,7 @@ export default function DashboardLayout({
                 status={userStatus}
                 onStatusChange={setUserStatus}
                 onClose={() => setProfileOpen(false)}
+                onOpenSettings={() => setProfileSettingsOpen(true)}
               />
             )}
           </div>
@@ -408,6 +411,20 @@ export default function DashboardLayout({
           </div>
         </main>
       </div>
+
+      {/* Profile Settings Modal */}
+      <ProfileSettingsModal
+        isOpen={profileSettingsOpen}
+        onClose={() => setProfileSettingsOpen(false)}
+        currentUser={currentUser}
+        onProfileUpdated={(updated) => {
+          setCurrentUser({
+            displayName: updated.displayName,
+            email: updated.email,
+            avatarUrl: updated.avatarUrl ?? null,
+          });
+        }}
+      />
     </div>
   );
 }

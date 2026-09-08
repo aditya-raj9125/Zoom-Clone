@@ -59,6 +59,16 @@ class ParticipantRepository:
         )
         return result.scalar_one_or_none()
 
+    async def get_host_by_meeting(self, meeting_internal_id: str) -> MeetingParticipant | None:
+        """Return the host participant for a meeting (active or inactive)."""
+        result = await self._db.execute(
+            select(MeetingParticipant).where(
+                MeetingParticipant.meeting_id == meeting_internal_id,
+                MeetingParticipant.is_host == True,  # noqa: E712
+            )
+        )
+        return result.scalar_one_or_none()
+
     async def has_active_session(self, meeting_internal_id: str, user_id: str) -> bool:
         """Check if a registered user already has an active session in the meeting."""
         result = await self._db.execute(

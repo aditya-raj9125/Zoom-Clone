@@ -20,6 +20,7 @@ interface UserProfileDropdownProps {
   status: string;
   onStatusChange: (status: string) => void;
   onClose: () => void;
+  onOpenSettings?: () => void;
 }
 
 export function UserProfileDropdown({
@@ -28,6 +29,7 @@ export function UserProfileDropdown({
   status,
   onStatusChange,
   onClose,
+  onOpenSettings,
 }: UserProfileDropdownProps) {
   const statuses = [
     { label: "Available", color: "bg-emerald-500", icon: "🟢" },
@@ -36,6 +38,13 @@ export function UserProfileDropdown({
     { label: "Away", color: "bg-amber-500", icon: "🕒" },
     { label: "Out of Office", color: "bg-slate-400", icon: "📅" },
   ];
+
+  const handleOpenSettings = () => {
+    onClose();
+    if (onOpenSettings) {
+      onOpenSettings();
+    }
+  };
 
   return (
     <div
@@ -52,11 +61,8 @@ export function UserProfileDropdown({
 
       {/* Settings */}
       <button
-        onClick={() => {
-          alert("Settings panel opened");
-          onClose();
-        }}
-        className="w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg hover:bg-slate-50 transition-colors text-slate-700"
+        onClick={handleOpenSettings}
+        className="w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg hover:bg-slate-50 transition-colors text-slate-700 cursor-pointer"
       >
         <Settings className="w-3.5 h-3.5 text-slate-500" />
         <span>Settings</span>
@@ -89,8 +95,8 @@ export function UserProfileDropdown({
       {/* Menu Links */}
       <div className="space-y-0.5">
         <button
-          onClick={onClose}
-          className="w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg hover:bg-slate-50 transition-colors text-slate-700"
+          onClick={handleOpenSettings}
+          className="w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg hover:bg-slate-50 transition-colors text-slate-700 cursor-pointer"
         >
           <User className="w-3.5 h-3.5 text-slate-500" />
           <span>My Profile</span>

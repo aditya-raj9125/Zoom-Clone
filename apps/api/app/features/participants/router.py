@@ -16,6 +16,7 @@ Routes:
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.dependencies import get_current_user_optional
 from app.core.database import get_db
 from app.features.meetings.schemas import JoinByInviteRequest, MeetingJoinRequest
 from app.features.participants.schemas import (
@@ -26,6 +27,7 @@ from app.features.participants.schemas import (
     VideoStateRequest,
 )
 from app.features.participants.service import ParticipantService
+from app.features.users.models import User
 
 router = APIRouter(tags=["Participants"])
 
@@ -48,12 +50,14 @@ router = APIRouter(tags=["Participants"])
 async def join_by_meeting_id(
     request: MeetingJoinRequest,
     db: AsyncSession = Depends(get_db),
+    current_user: User | None = Depends(get_current_user_optional),
 ) -> JoinMeetingResponse:
     service = ParticipantService(db)
     return await service.join_by_meeting_id(
         meeting_id=request.meeting_id,
         display_name=request.display_name,
         passcode=request.passcode,
+        user=current_user,
     )
 
 
@@ -71,11 +75,13 @@ async def join_by_meeting_id(
 async def join_by_invite(
     request: JoinByInviteRequest,
     db: AsyncSession = Depends(get_db),
+    current_user: User | None = Depends(get_current_user_optional),
 ) -> JoinMeetingResponse:
     service = ParticipantService(db)
     return await service.join_by_invite_token(
         invite_token=request.invite_token,
         display_name=request.display_name,
+        user=current_user,
     )
 
 

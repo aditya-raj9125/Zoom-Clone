@@ -16,3 +16,14 @@ class UserResponse(BaseModel):
     avatar_url: str | None = Field(None, description="Profile picture URL")
     is_default_user: bool
     created_at: datetime
+
+
+class UpdateUserRequest(BaseModel):
+    """Request payload to update current user's profile."""
+
+    display_name: str | None = Field(
+        None, min_length=1, max_length=100, description="New display name shown in meeting UI"
+    )
+    avatar_url: str | None = Field(
+        None, max_length=500, description="Avatar image URL"
+    )

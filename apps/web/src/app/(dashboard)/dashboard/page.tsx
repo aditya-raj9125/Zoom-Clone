@@ -18,6 +18,7 @@ import {
 import { JoinMeetingModal } from "@/components/dashboard/JoinMeetingModal";
 import { ScheduleMeetingView } from "@/components/dashboard/ScheduleMeetingView";
 import { api } from "@/lib/api";
+import { getCurrentUserFromToken, getStoredUser } from "@/lib/auth";
 import type { MeetingListItem } from "@zoom-clone/contracts";
 
 export default function DashboardPage() {
@@ -84,7 +85,23 @@ export default function DashboardPage() {
   const handleStartInstantMeeting = async () => {
     setIsCreatingMeeting(true);
     try {
-      const meeting = await api.createInstantMeeting("Aditya Raj's Zoom Meeting");
+      const user = getStoredUser() || getCurrentUserFromToken();
+      const hostName = user?.display_name?.trim() || "Aditya Raj";
+      const meeting = await api.createInstantMeeting(`${hostName}'s Zoom Meeting`);
+
+      // Pre-cache host session so meeting room immediately connects as host without duplicate participant
+      sessionStorage.setItem(
+        `zoom_session_${meeting.meeting_id}`,
+        JSON.stringify({
+          participant_id: meeting.host_participant_id,
+          meeting_id: meeting.meeting_id,
+          display_name: hostName,
+          role: "host",
+          is_host: true,
+        })
+      );
+      sessionStorage.setItem("zoom_join_name", hostName);
+
       router.push(`/meetings/${meeting.meeting_id}`);
     } catch (err: unknown) {
       alert(`Error starting instant meeting: ${err instanceof Error ? err.message : "Unknown error"}`);

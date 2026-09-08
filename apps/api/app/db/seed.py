@@ -54,10 +54,11 @@ async def seed_database(db: AsyncSession) -> None:
     default_password_hash = hash_password("password123")
 
     # 1a. Default user
-    result = await db.execute(select(User).where(User.is_default_user == True))  # noqa: E712
-    default_user = result.scalar_one_or_none()
+    default_users = (
+        await db.execute(select(User).where(User.is_default_user == True))  # noqa: E712
+    ).scalars().all()
 
-    if default_user is None:
+    if not default_users:
         default_user = User(
             id=str(uuid.uuid4()),
             display_name=DEFAULT_USER_DISPLAY_NAME,
@@ -69,33 +70,49 @@ async def seed_database(db: AsyncSession) -> None:
         await db.flush()
         logger.info("Created default user: %s", DEFAULT_USER_DISPLAY_NAME)
     else:
+        default_user = default_users[0]
         if not default_user.password_hash:
             default_user.password_hash = default_password_hash
-            await db.flush()
-        logger.info("Default user already exists — skipping")
+        # Demote any accidental extra default users
+        for extra in default_users[1:]:
+            extra.is_default_user = False
+        await db.flush()
+        logger.info("Default user resolved")
 
-    # 1b. Sample demo account: testuser@example.com (password: password123)
-    result = await db.execute(select(User).where(User.email == "testuser@example.com"))
-    test_user = result.scalar_one_or_none()
+    # 1b. Sample account: testuser@example.com (password: password123)
+    test_user = (
+        await db.execute(select(User).where(User.email == "testuser@example.com"))
+    ).scalars().first()
+
     if test_user is None:
         test_user = User(
             id=str(uuid.uuid4()),
-            display_name="Demo User",
+            display_name=DEFAULT_USER_DISPLAY_NAME,
             email="testuser@example.com",
             password_hash=default_password_hash,
             is_default_user=False,
         )
         db.add(test_user)
         await db.flush()
-        logger.info("Created demo user: testuser@example.com")
+        logger.info("Created user: testuser@example.com")
     else:
+        if test_user.display_name == "Demo User":
+            test_user.display_name = DEFAULT_USER_DISPLAY_NAME
         if not test_user.password_hash:
             test_user.password_hash = default_password_hash
-            await db.flush()
+        await db.flush()
+
+    # Migrate any legacy 'Demo User' display names to 'Aditya Raj'
+    demo_result = await db.execute(select(User).where(User.display_name == "Demo User"))
+    for legacy_user in demo_result.scalars().all():
+        legacy_user.display_name = DEFAULT_USER_DISPLAY_NAME
+    await db.flush()
 
     # 1c. Aditya account: adityahars09@gmail.com (password: password123)
-    result = await db.execute(select(User).where(User.email == "adityahars09@gmail.com"))
-    aditya_user = result.scalar_one_or_none()
+    aditya_user = (
+        await db.execute(select(User).where(User.email == "adityahars09@gmail.com"))
+    ).scalars().first()
+
     if aditya_user is None:
         aditya_user = User(
             id=str(uuid.uuid4()),
@@ -110,15 +127,27 @@ async def seed_database(db: AsyncSession) -> None:
     else:
         if not aditya_user.password_hash:
             aditya_user.password_hash = default_password_hash
-            await db.flush()
+        await db.flush()
 
     now = utcnow()
+
+    # Clean up any stale active participants from legacy seeded meetings
+    stale_p_res = await db.execute(
+        select(MeetingParticipant).where(
+            MeetingParticipant.display_name.in_(["Demo User", "Priya Sharma"]),
+            MeetingParticipant.is_active == True,  # noqa: E712
+        )
+    )
+    for sp in stale_p_res.scalars().all():
+        sp.is_active = False
+        sp.left_at = now
+    await db.flush()
 
     # -----------------------------------------------------------------------
     # 2. Sample ended meeting (recent history)
     # -----------------------------------------------------------------------
     result = await db.execute(select(Meeting).where(Meeting.status == MeetingStatus.ENDED.value))
-    if result.scalar_one_or_none() is None:
+    if result.scalars().first() is None:
         ended_id = str(uuid.uuid4())
         ended_meeting = Meeting(
             id=ended_id,
@@ -238,7 +267,7 @@ async def seed_database(db: AsyncSession) -> None:
     result = await db.execute(
         select(Meeting).where(Meeting.status == MeetingStatus.SCHEDULED.value)
     )
-    if result.scalar_one_or_none() is None:
+    if result.scalars().first() is None:
         upcoming_id = str(uuid.uuid4())
         upcoming_meeting = Meeting(
             id=upcoming_id,
@@ -271,7 +300,7 @@ async def seed_database(db: AsyncSession) -> None:
     # 4. Sample live instant meeting
     # -----------------------------------------------------------------------
     result = await db.execute(select(Meeting).where(Meeting.status == MeetingStatus.LIVE.value))
-    if result.scalar_one_or_none() is None:
+    if result.scalars().first() is None:
         live_id = str(uuid.uuid4())
         live_meeting = Meeting(
             id=live_id,
@@ -281,9 +310,10 @@ async def seed_database(db: AsyncSession) -> None:
             host_user_id=default_user.id,
             passcode=generate_meeting_passcode(),
             invite_token=generate_meeting_invite_token(),
-            status=MeetingStatus.LIVE,
+            status=MeetingStatus.ENDED,
             meeting_type=MeetingType.INSTANT,
-            actual_started_at=now - timedelta(minutes=5),
+            actual_started_at=now - timedelta(minutes=45),
+            actual_ended_at=now - timedelta(minutes=15),
         )
         db.add(live_meeting)
         await db.flush()
@@ -298,7 +328,8 @@ async def seed_database(db: AsyncSession) -> None:
             role=ParticipantRole.HOST,
             is_host=True,
             joined_at=live_meeting.actual_started_at,
-            is_active=True,
+            left_at=live_meeting.actual_ended_at,
+            is_active=False,
             audio_enabled=True,
             video_enabled=True,
         )
@@ -312,8 +343,9 @@ async def seed_database(db: AsyncSession) -> None:
             display_name="Priya Sharma",
             role=ParticipantRole.PARTICIPANT,
             is_host=False,
-            joined_at=now - timedelta(minutes=3),
-            is_active=True,
+            joined_at=now - timedelta(minutes=43),
+            left_at=live_meeting.actual_ended_at,
+            is_active=False,
             audio_enabled=False,
             video_enabled=True,
             muted_by_host=True,

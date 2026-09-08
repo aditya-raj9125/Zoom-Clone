@@ -594,10 +594,18 @@ export default function MeetingRoomPage() {
         // Stale ghost session of myself before page refresh
         continue;
       }
+      if (p.participant_id !== myParticipantId && isHost && p.is_host) {
+        // Stale host session of current host
+        continue;
+      }
+      if (p.participant_id !== myParticipantId && p.display_name.trim().toLowerCase() === "demo user") {
+        // Stale ghost demo user session
+        continue;
+      }
       map.set(p.participant_id, p);
     }
     return Array.from(map.values());
-  }, [participants, myParticipantId, myDisplayName]);
+  }, [participants, myParticipantId, myDisplayName, isHost]);
 
   // Filter out self and duplicate stale sessions for remote participants
   const remoteParticipants = useMemo(() => {
@@ -610,13 +618,19 @@ export default function MeetingRoomPage() {
       if (myNameNorm && p.display_name.trim().toLowerCase() === myNameNorm) {
         continue;
       }
+      if (isHost && p.is_host) {
+        continue;
+      }
+      if (p.display_name.trim().toLowerCase() === "demo user") {
+        continue;
+      }
       if (!seen.has(p.participant_id)) {
         seen.add(p.participant_id);
         result.push(p);
       }
     }
     return result;
-  }, [participants, myParticipantId, myDisplayName]);
+  }, [participants, myParticipantId, myDisplayName, isHost]);
 
   // Active remote speaker for speaker view
   const activeRemoteSpeaker = remoteParticipants[0] || null;

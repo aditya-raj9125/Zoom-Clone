@@ -112,7 +112,14 @@ export const api = {
 
   // User endpoints
   async getCurrentUser(): Promise<UserResponse> {
-    return request<UserResponse>("/auth/me");
+    return request<UserResponse>("/users/me");
+  },
+
+  async updateCurrentUser(data: { display_name?: string; avatar_url?: string }): Promise<UserResponse> {
+    return request<UserResponse>("/users/me", {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    });
   },
 
   // Meeting lifecycle & scheduling

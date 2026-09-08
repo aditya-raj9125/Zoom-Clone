@@ -20,3 +20,17 @@ class TestUsersMe:
         assert response.status_code == 404
         error = response.json()["error"]
         assert error["code"] == "USER_NOT_FOUND"
+
+    async def test_update_me_display_name(self, client: AsyncClient, default_user):
+        response = await client.patch(
+            "/api/v1/users/me",
+            json={"display_name": "Aditya Dynamic Name"},
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["display_name"] == "Aditya Dynamic Name"
+
+        # Verify get reflects change
+        get_res = await client.get("/api/v1/users/me")
+        assert get_res.status_code == 200
+        assert get_res.json()["display_name"] == "Aditya Dynamic Name"
