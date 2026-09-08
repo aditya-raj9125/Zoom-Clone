@@ -24,7 +24,6 @@ import {
   Send,
   UserCheck,
   UserPlus,
-  Radio,
   Loader2,
   User as UserIcon,
 } from "lucide-react";
@@ -96,6 +95,20 @@ export default function MeetingRoomPage() {
   const webrtcRef = useRef<WebRTCManager | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
   const chatBottomRef = useRef<HTMLDivElement>(null);
+  const infoPopoverRef = useRef<HTMLDivElement>(null);
+
+  // Close info popover when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (infoPopoverRef.current && !infoPopoverRef.current.contains(event.target as Node)) {
+        setShowInfoPopover(false);
+      }
+    };
+    if (showInfoPopover) {
+      document.addEventListener("mousedown", handleClickOutside);
+    }
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [showInfoPopover]);
 
   // Callback ref to immediately bind local stream whenever <video> mounts
   const bindLocalVideo = (node: HTMLVideoElement | null) => {
@@ -621,67 +634,103 @@ export default function MeetingRoomPage() {
       {/* 1. TOP HEADER BAR */}
       <header className="h-10 px-4 bg-[#0E0F12] flex items-center justify-between z-30 shrink-0 border-b border-white/5">
         {/* Top-left: Meeting Title with (i) Info Icon */}
-        <div className="relative flex items-center">
+        <div className="relative flex items-center" ref={infoPopoverRef}>
           <button
             onClick={() => setShowInfoPopover(!showInfoPopover)}
-            className="flex items-center gap-1.5 px-2 py-1 rounded-md hover:bg-white/10 text-xs font-semibold text-slate-200 transition-colors cursor-pointer"
+            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md transition-colors cursor-pointer ${
+              showInfoPopover ? "bg-white/20 text-white" : "hover:bg-white/10 text-slate-200"
+            } text-xs font-semibold`}
           >
-            <div className="w-3.5 h-3.5 rounded-full border border-slate-300 flex items-center justify-center text-[10px] font-serif">
+            <div className="w-4 h-4 rounded-full border border-slate-400 flex items-center justify-center text-[10px] font-serif font-bold text-slate-200">
               i
             </div>
             <span>{meetingData?.title || "Zoom Meeting"}</span>
           </button>
 
-          {/* Meeting Info Popover (Mockup 4) */}
+          {/* Meeting Info Popover */}
           {showInfoPopover && (
             <div
-              className="absolute left-0 top-full mt-2 w-84 rounded-xl bg-[#24272C] text-slate-200 p-4 shadow-2xl ring-1 ring-white/10 z-50 animate-in fade-in zoom-in-95 text-xs"
+              className="absolute left-0 top-full mt-2 w-88 sm:w-96 rounded-2xl bg-[#1E2024] text-slate-200 p-4 shadow-2xl ring-1 ring-white/15 z-50 animate-in fade-in zoom-in-95 text-xs backdrop-blur-xl"
               onClick={(e) => e.stopPropagation()}
             >
-              <h3 className="font-bold text-sm text-white mb-3">
-                {meetingData?.title || "Zoom Meeting"}
-              </h3>
+              <div className="flex items-center justify-between pb-3 mb-3 border-b border-white/10">
+                <div className="flex items-center gap-2">
+                  <div className="w-5 h-5 rounded-full border border-slate-400 flex items-center justify-center text-xs font-serif font-bold text-slate-200">
+                    i
+                  </div>
+                  <h3 className="font-bold text-sm text-white">
+                    {meetingData?.title || "Zoom Meeting"}
+                  </h3>
+                </div>
+                <button
+                  onClick={() => setShowInfoPopover(false)}
+                  className="p-1 rounded-md text-slate-400 hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
 
-              <div className="space-y-2.5 text-[11px]">
-                {/* Invite link with copy button */}
-                <div>
-                  <div className="text-slate-400 mb-1">Invite Link</div>
-                  <div className="flex items-center justify-between p-2 rounded-lg bg-black/40 border border-white/10">
+              <div className="space-y-3 text-[11px]">
+                {/* Meeting ID */}
+                <div className="flex justify-between items-center py-0.5 border-b border-white/5">
+                  <span className="text-slate-400">Meeting ID</span>
+                  <span className="font-mono text-white font-semibold tracking-wider text-xs">
+                    {meetingData?.meeting_id || meetingId}
+                  </span>
+                </div>
+
+                {/* Host */}
+                <div className="flex justify-between items-center py-0.5 border-b border-white/5">
+                  <span className="text-slate-400">Host</span>
+                  <span className="text-white font-medium">
+                    {meetingData?.host?.display_name || myDisplayName || "Host"}
+                  </span>
+                </div>
+
+                {/* Passcode */}
+                <div className="flex justify-between items-center py-0.5 border-b border-white/5">
+                  <span className="text-slate-400">Passcode</span>
+                  <span className="font-mono text-white font-semibold">{meetingData?.passcode || "—"}</span>
+                </div>
+
+                {/* Participants */}
+                <div className="flex justify-between items-center py-0.5 border-b border-white/5">
+                  <span className="text-slate-400">Participants Online</span>
+                  <span className="font-mono text-emerald-400 font-semibold">{uniqueParticipants.length}</span>
+                </div>
+
+                {/* Invite link section with direct copy */}
+                <div className="pt-1">
+                  <div className="text-slate-400 mb-1.5 font-medium">Invite Link</div>
+                  <div className="flex items-center justify-between p-2 rounded-lg bg-black/50 border border-white/10 mb-2.5">
                     <span className="truncate text-[#38BDF8] pr-2 font-mono text-[10px]">
                       {meetingData?.invite_link || `${typeof window !== "undefined" ? window.location.origin : ""}/meetings/${meetingId}`}
                     </span>
                     <button
                       onClick={handleCopyInviteLink}
-                      className="p-1 rounded hover:bg-white/10 text-slate-300 transition-colors"
+                      className="p-1 rounded hover:bg-white/10 text-slate-300 hover:text-white transition-colors cursor-pointer shrink-0"
                       title="Copy Link"
                     >
                       {copiedLink ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
                     </button>
                   </div>
-                </div>
 
-                <div className="flex justify-between py-0.5 border-b border-white/5">
-                  <span className="text-slate-400">Meeting ID</span>
-                  <span className="font-mono text-white font-semibold tracking-wider">
-                    {meetingData?.meeting_id || meetingId}
-                  </span>
-                </div>
-
-                <div className="flex justify-between py-0.5 border-b border-white/5">
-                  <span className="text-slate-400">Host</span>
-                  <span className="text-white">
-                    {meetingData?.host?.display_name || myDisplayName || "Host"}
-                  </span>
-                </div>
-
-                <div className="flex justify-between py-0.5 border-b border-white/5">
-                  <span className="text-slate-400">Passcode</span>
-                  <span className="font-mono text-white font-semibold">{meetingData?.passcode || "—"}</span>
-                </div>
-
-                <div className="flex justify-between py-0.5">
-                  <span className="text-slate-400">Participants Online</span>
-                  <span className="font-mono text-emerald-400 font-semibold">{uniqueParticipants.length}</span>
+                  <button
+                    onClick={handleCopyInviteLink}
+                    className="w-full py-2 px-3 rounded-lg bg-[#0B5CFF] hover:bg-[#004BDE] active:scale-[0.99] text-white text-xs font-semibold shadow-md flex items-center justify-center gap-2 transition-all cursor-pointer"
+                  >
+                    {copiedLink ? (
+                      <>
+                        <Check className="w-4 h-4 text-emerald-300" />
+                        <span>Invite Link Copied!</span>
+                      </>
+                    ) : (
+                      <>
+                        <Copy className="w-4 h-4" />
+                        <span>Copy Invite Link</span>
+                      </>
+                    )}
+                  </button>
                 </div>
               </div>
             </div>
@@ -849,45 +898,7 @@ export default function MeetingRoomPage() {
                       <span>{myDisplayName || "You"} (You)</span>
                     </div>
 
-                    {/* Waiting for others invite banner overlay */}
-                    <div className="absolute top-6 left-1/2 -translate-x-1/2 w-11/12 max-w-md p-4 rounded-2xl bg-black/80 backdrop-blur-md border border-white/15 text-center shadow-2xl animate-in fade-in slide-in-from-top-4">
-                      <div className="flex items-center justify-center gap-2 text-emerald-400 mb-1">
-                        <Radio className="w-4 h-4 animate-pulse" />
-                        <span className="text-xs font-semibold uppercase tracking-wider">
-                          Meeting is Live
-                        </span>
-                      </div>
-                      <h3 className="text-sm font-bold text-white mb-1">
-                        Waiting for others to join...
-                      </h3>
-                      <p className="text-[11px] text-slate-400 mb-3">
-                        Invite participants to this meeting by sharing the link below:
-                      </p>
 
-                      <div className="flex items-center gap-2">
-                        <button
-                          onClick={handleCopyInviteLink}
-                          className="flex-1 py-2 px-3 rounded-xl bg-[#0B5CFF] hover:bg-[#004BDE] active:scale-98 text-white text-xs font-semibold shadow-md flex items-center justify-center gap-2 transition-all cursor-pointer"
-                        >
-                          {copiedLink ? (
-                            <>
-                              <Check className="w-4 h-4 text-emerald-300" />
-                              <span>Invite Link Copied!</span>
-                            </>
-                          ) : (
-                            <>
-                              <Copy className="w-4 h-4" />
-                              <span>Copy Invite Link</span>
-                            </>
-                          )}
-                        </button>
-                      </div>
-
-                      <div className="mt-2.5 pt-2 border-t border-white/10 flex items-center justify-around text-[10px] text-slate-400">
-                        <span>Meeting ID: <strong className="text-slate-200">{meetingData?.meeting_id || meetingId}</strong></span>
-                        <span>Passcode: <strong className="text-slate-200">{meetingData?.passcode || "—"}</strong></span>
-                      </div>
-                    </div>
                   </div>
                 </div>
               ) : viewMode === "speaker" ? (
