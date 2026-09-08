@@ -1,176 +1,295 @@
-# Zoom Clone — Full-Stack Video Conferencing Platform
+<div align="center">
 
-A faithful, modern video conferencing web application inspired by Zoom's core meeting workflows, design system, and real-time coordination. Engineered with a Next.js 16 frontend, FastAPI modular monolith backend, SQLite persistence, and WebRTC signaling.
+# Zoom Clone
 
----
+### A real-time video-conferencing platform built with Next.js, FastAPI and WebRTC
 
-## 1. Overview
+<p>
+  <a href="https://github.com/aditya-raj9125/Zoom-Clone"><img src="https://img.shields.io/badge/repository-Zoom--Clone-0B5CFF?style=for-the-badge&logo=github&logoColor=white" alt="Repository"></a>
+  <img src="https://img.shields.io/badge/Next.js-16-111827?style=for-the-badge&logo=next.js&logoColor=white" alt="Next.js 16">
+  <img src="https://img.shields.io/badge/FastAPI-async-059669?style=for-the-badge&logo=fastapi&logoColor=white" alt="FastAPI">
+  <img src="https://img.shields.io/badge/WebRTC-P2P-7C3AED?style=for-the-badge&logo=webrtc&logoColor=white" alt="WebRTC">
+</p>
 
-Zoom Clone is structured as a professional, lightweight monorepo designed for clean separation of concerns, high maintainability, and zero-friction developer setup.
+<p><sub>A polished full-stack meeting prototype with live presence, camera and microphone state, peer-to-peer media, chat, reactions, screen sharing, scheduling and host moderation.</sub></p>
+
+</div>
+
+> **Project status** · Functional full-stack prototype · REST + WebSocket realtime layer · WebRTC mesh media · Automated deployment configured for Vercel and Render
+
+## Contents
+
+- [What this project is](#what-this-project-is)
+- [Features](#features)
+- [Architecture at a glance](#architecture-at-a-glance)
+- [Repository layout](#repository-layout)
+- [Quick start](#quick-start)
+- [Configuration](#configuration)
+- [How a meeting works](#how-a-meeting-works)
+- [Verification](#verification)
+- [Deployment](#deployment)
+- [Assumptions and limitations](#assumptions-and-limitations)
+- [Documentation map](#documentation-map)
+
+## What this project is
+
+Zoom Clone is a modular-monolith monorepo for a browser-based meeting experience. The Next.js client owns the product interface and browser media lifecycle. The FastAPI service owns meeting lifecycle, authorization, persistence, REST APIs, realtime event broadcasting and WebRTC signaling. Audio and video stay peer-to-peer between browsers; the server relays only signaling metadata.
+
+The repository is intentionally small enough to run locally without Docker, Redis or a media server, while keeping clear boundaries that can evolve toward an SFU-backed production architecture later.
+
+## Features
+
+| Area | Included behavior |
+| --- | --- |
+| Meetings | Instant meetings, scheduled meetings, passcodes, invite links, lifecycle state machine |
+| Participants | Join/leave presence, opaque participant IDs, active participant list |
+| Media | Live microphone/camera controls, remote audio playback, screen-share state, device fallback |
+| WebRTC | SDP offer/answer, ICE exchange, early-signal buffering, serialized signaling, peer cleanup |
+| Collaboration | Persisted chat history, realtime chat broadcast, emoji reactions |
+| Moderation | Host mute, mute-all, remove participant, single active screen sharer |
+| Identity | Local/default user flow, JWT-ready auth module, optional Google OAuth configuration |
+| Developer experience | Alembic migrations, seed script, OpenAPI/Swagger, typed shared contracts, tests |
+
+## Architecture at a glance
 
 ```mermaid
-flowchart TB
-    subgraph Clients["Clients"]
-        Browser["User Browser / Client"]
+flowchart LR
+    BrowserA["Browser A<br/>Next.js UI"]
+    BrowserB["Browser B<br/>Next.js UI"]
+
+    subgraph Web["apps/web"]
+        UI["Meeting UI"]
+        RTC["WebRTC Manager"]
+        Client["REST + WebSocket Client"]
     end
 
-    subgraph Apps["Applications (apps/)"]
-        Web["Next.js Web App<br/>apps/web"]
-        API["FastAPI API<br/>apps/api"]
+    subgraph API["apps/api · FastAPI"]
+        REST["REST routers<br/>/api/v1"]
+        Services["Feature services<br/>meetings · participants · chat · reactions"]
+        WS["WebSocket endpoint<br/>presence + signaling"]
+        CM["ConnectionManager<br/>in-memory realtime registry"]
+        DB[("SQLite<br/>SQLAlchemy async + Alembic")]
     end
 
-    subgraph Packages["Shared Packages (packages/)"]
-        UI["UI Primitives<br/>packages/ui"]
-        Contracts["Type Contracts<br/>packages/contracts"]
-    end
-
-    subgraph BackendServices["Backend Core & Storage"]
-        DB[("SQLite Database<br/>aiosqlite")]
-        WS["WebSocket & WebRTC Signaling<br/>ConnectionManager"]
-    end
-
-    Browser -->|HTTP / React UI| Web
-    Browser -->|REST API| API
-    Browser -->|WebSocket Realtime| WS
-
-    Web --> UI
-    Web --> Contracts
-
-    API --> WS
-    API --> DB
-
-    Browser <-->|Peer-to-Peer Audio/Video| Browser
+    BrowserA --> UI --> RTC
+    UI --> Client
+    Client -->|HTTP| REST
+    Client -->|WebSocket| WS
+    REST --> Services --> DB
+    Services --> CM
+    WS --> CM
+    RTC <-->|SDP + ICE via server| CM
+    BrowserA <-->|Direct audio/video tracks| BrowserB
 ```
 
----
+### Runtime responsibilities
 
-## 2. Key Capabilities
+- **Browser**: renders the interface, asks for media permissions, owns `RTCPeerConnection` objects and plays remote streams.
+- **REST API**: creates meetings, validates joins, persists state and applies host permissions.
+- **WebSocket layer**: broadcasts presence/media events and forwards WebRTC offer, answer and ICE payloads.
+- **Database**: stores durable meeting, participant, event, chat and reaction records.
+- **Shared packages**: keep UI helpers and frontend contracts reusable across applications.
 
-### Implemented
-- **Instant Meetings**: Immediate meeting room creation with 10-digit numeric ID, 6-character alphanumeric passcode, and unique invite token.
-- **Meeting Scheduling**: Future scheduling with duration validation (1 - 1440 min) and UTC timezone awareness.
-- **Meeting State Machine**: Deterministic transitions (`SCHEDULED` -> `LIVE` -> `ENDED` / `CANCELLED`) with join validation.
-- **Host Controls & Moderation**: Mute individual participant, host mute-all, and kick/remove participant.
-- **Participant State**: Live microphone mute, camera toggle, and arbitrated screen sharing (max 1 active sharer).
-- **Real-Time Collaboration**: In-meeting chat history and ephemeral emoji reactions (`thumbs_up`, `clap`, `heart`, etc.).
-- **WebSockets & WebRTC Signaling**: Peer-to-peer session description (SDP offer/answer) and ICE candidate routing.
-- **Database Architecture**: 6 normalized relational entities, UUID string primary keys, `selectinload` async relationships.
-- **Automated Verification**: 66 passing Pytest tests, 0 Ruff lint errors, 0 Mypy static typing errors across 57 source files.
+## Repository layout
 
-### Scaffolded
-- **Frontend Monorepo Application (`apps/web`)**: Next.js 16 with Turbopack, Tailwind CSS v4, Lucide icons, and Framer Motion.
-- **Design System Primitives (`packages/ui`)**: Modular UI package structure with class merge utilities and component interfaces.
-- **Contract Layer (`packages/contracts`)**: Complete TypeScript definitions matching backend schemas.
-
-### Planned (Phase 2)
-- High-fidelity Zoom meeting room UI (Speaker Grid, Participants Drawer, Chat Drawer, Reaction Toasts).
-- Dashboard homepage with Upcoming and Recent meetings interactive cards.
-- Screen share video rendering and WebRTC media stream binding.
-
----
-
-## 3. Monorepo Structure
-
-```
+```text
 Zoom-Clone/
-│
 ├── apps/
-│   ├── web/                         # Next.js 16 frontend application
-│   └── api/                         # FastAPI modular monolith backend
-│
+│   ├── api/                 # FastAPI modular monolith
+│   └── web/                 # Next.js 16 application
 ├── packages/
-│   ├── ui/                          # Reusable frontend UI primitives
-│   └── contracts/                   # API DTOs & WebSocket event contracts
-│
+│   ├── contracts/           # Shared TypeScript DTO and event types
+│   └── ui/                  # Reusable UI primitives and styling helpers
 ├── docs/
-│   ├── architecture/                # System architecture & Mermaid diagrams
-│   ├── api/                         # REST & WebSocket protocol specifications
-│   ├── database/                    # ER diagram and SQLite indexing strategy
-│   ├── development/                 # Local setup and workflow guide
-│   └── decisions/                   # Architecture Decision Records (ADRs)
-│
-├── Execution_Prompts/               # Master execution prompts & specifications
-├── UI_UX_Mockups/                   # High-fidelity Zoom UI reference screenshots
-│
-├── package.json                     # Monorepo workspaces definition
-├── pnpm-workspace.yaml              # pnpm workspace configuration
-├── .gitignore                       # Universal Python, Node & Next.js exclusions
-└── README.md                        # Root project documentation
+│   ├── architecture/        # System design and runtime flows
+│   ├── api/                 # REST and WebSocket protocol references
+│   ├── database/            # ER model and persistence notes
+│   ├── development/         # Local development and asset guides
+│   └── decisions/           # Architecture Decision Records
+├── Execution_Prompts/       # Project specifications and execution prompts
+├── UI_UX_Mockups/           # Product and interface references
+├── package.json             # Root npm scripts and workspaces
+├── pnpm-workspace.yaml      # Workspace declaration
+└── README.md               # Single canonical project guide
 ```
 
----
+## Quick start
 
-## 4. Quick Start
+### Prerequisites
 
-### Backend API (`apps/api`)
+- Python **3.12+**
+- Node.js **20+**
+- npm or pnpm
+- A browser that supports WebRTC and grants camera/microphone permissions
+
+### 1. Install frontend dependencies
+
 ```bash
+npm install
+```
+
+### 2. Prepare the API
+
+PowerShell:
+
+```powershell
 cd apps/api
-
-# 1. Activate virtual environment
+python -m venv .venv
 .\.venv\Scripts\Activate.ps1
-
-# 2. Run database migrations & seed deterministic sample data
+pip install -e ".[dev]"
+Copy-Item .env.example .env
 $env:PYTHONPATH = "."
 python -m alembic upgrade head
 python scripts/seed_db.py
-
-# 3. Start development server
-python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
 ```
-Interactive Swagger Documentation: 👉 **`http://127.0.0.1:8000/docs`**
 
-### Frontend Web (`apps/web`)
-```bash
-# From repository root
-npm install
-npm run dev:web
-```
-Next.js Application: 👉 **`http://localhost:3000`**
-
----
-
-## 5. Quality & Test Verification
-
-All backend tests and static checks execute cleanly with zero errors:
+macOS/Linux:
 
 ```bash
 cd apps/api
-$env:PYTHONPATH = "."
-
-# 1. Automated Test Suite (66 / 66 passing)
-.\.venv\Scripts\python -m pytest -v
-
-# 2. Ruff Linter (0 errors)
-.\.venv\Scripts\python -m ruff check .
-
-# 3. Ruff Formatter (Clean)
-.\.venv\Scripts\python -m ruff format --check .
-
-# 4. Mypy Type Checker (57 files checked, 0 errors)
-.\.venv\Scripts\python -m mypy app
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -e ".[dev]"
+cp .env.example .env
+export PYTHONPATH=.
+python -m alembic upgrade head
+python scripts/seed_db.py
 ```
 
----
+### 3. Start both applications
 
----
+Terminal 1 — API:
 
-## 6. Auto-Deploy to Production
+```bash
+cd apps/api
+# Activate .venv first
+python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
+```
 
-Automated with **GitHub Actions** on every commit to `main`:
-- **Direct Auto-Deploy:** Bypasses pre-deploy test checks and immediately triggers production deployments.
-- **Vercel (Frontend):** Auto-deploys `apps/web` to `https://zoom-clone-web-gamma.vercel.app`.
-- **Render (Backend):** Auto-deploys `apps/api` to `https://zoom-clone-hvoi.onrender.com`.
-- See the [Auto-Deploy Guide](docs/CICD_SETUP.md) for details on Deploy Hooks.
+Terminal 2 — web:
 
----
+```bash
+npm run dev:web
+```
 
-## 7. Detailed Documentation
+Open [http://localhost:3000](http://localhost:3000). API documentation is available at [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs) and [http://127.0.0.1:8000/redoc](http://127.0.0.1:8000/redoc).
 
-- [CI/CD & Deployment Guide](docs/CICD_SETUP.md)
-- [Architecture Overview](docs/architecture/overview.md)
-- [REST API Reference](docs/api/rest-api.md)
-- [WebSocket & WebRTC Protocol](docs/api/websocket-protocol.md)
-- [Database Schema & ER Diagram](docs/database/schema.md)
-- [Developer Setup Guide](docs/development/getting-started.md)
-- [ADR 001: Modular Monolith](docs/decisions/adr-001-modular-monolith.md)
+## Configuration
 
+### Backend environment
+
+Copy `apps/api/.env.example` to `apps/api/.env`. Important settings include:
+
+| Variable | Local default | Purpose |
+| --- | --- | --- |
+| `DATABASE_URL` | `sqlite+aiosqlite:///./data/zoom_clone.db` | Async SQLAlchemy database URL |
+| `CORS_ORIGINS` | `http://localhost:3000,http://localhost:5173` | Allowed browser origins |
+| `JWT_SECRET_KEY` | Development placeholder | Replace for deployment |
+| `FRONTEND_URL` | `http://localhost:3000` | OAuth redirect and generated links |
+| `GOOGLE_CLIENT_ID` | Empty | Optional Google OAuth client |
+| `GOOGLE_CLIENT_SECRET` | Empty | Optional Google OAuth secret |
+| `ENVIRONMENT` | `development` | Runtime mode |
+
+### Frontend environment
+
+The client derives local API and WebSocket URLs from the browser hostname. For deployment, configure:
+
+```env
+NEXT_PUBLIC_API_URL=https://your-api.example.com/api/v1
+NEXT_PUBLIC_WS_URL=wss://your-api.example.com/api/v1/ws
+```
+
+Use `wss://` when the frontend is served over HTTPS.
+
+## How a meeting works
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant A as Participant A
+    participant API as FastAPI REST
+    participant WS as WebSocket relay
+    participant B as Participant B
+
+    A->>API: Create meeting
+    API-->>A: Meeting ID + passcode + invite link
+    A->>API: Join meeting
+    API-->>A: participant_id
+    A->>WS: Open authenticated meeting socket
+    B->>API: Join by ID or invite
+    API-->>B: participant_id
+    B->>WS: Open authenticated meeting socket
+    WS-->>A: participant.joined
+    A->>WS: webrtc.offer
+    WS-->>B: webrtc.offer
+    B->>WS: webrtc.answer
+    WS-->>A: webrtc.answer
+    A->>WS: ICE candidates
+    WS-->>B: ICE candidates
+    A<<->>B: Direct audio/video media
+    A->>API: Toggle camera or microphone
+    API-->>WS: participant media event
+    WS-->>A: Realtime UI state
+    WS-->>B: Realtime UI state
+```
+
+The WebRTC path does not use page reloads, polling or repeated meeting recreation. Signaling is event-driven; the server buffers early signaling messages and the client queues ICE until a remote description exists.
+
+## Verification
+
+Backend checks:
+
+```bash
+cd apps/api
+export PYTHONPATH=.
+python -m pytest -q
+python -m ruff check .
+python -m ruff format --check .
+python -m mypy app
+```
+
+Frontend checks:
+
+```bash
+npm --prefix apps/web run lint
+npx tsc -p apps/web/tsconfig.json --noEmit
+npm run build:web
+```
+
+The current backend suite contains 66 passing tests. Exact counts may change as features evolve; the commands above are the source of truth.
+
+## Deployment
+
+The repository is configured for:
+
+- **Vercel** for `apps/web`
+- **Render** for `apps/api`
+- GitHub Actions workflow on pushes to `main`
+
+See [CI/CD and deployment](docs/CICD_SETUP.md) for environment variables, deploy hooks, health checks and production notes.
+
+## Assumptions and limitations
+
+- WebRTC media is a peer-to-peer mesh. It is suitable for small rooms; larger rooms should move media routing to an SFU.
+- The current signaling registry is in memory. Multi-instance deployment requires shared pub/sub, such as Redis.
+- SQLite on Render uses the configured filesystem path and should be replaced with managed Postgres for durable production storage.
+- A TURN server is not configured. Some corporate or symmetric-NAT networks may require TURN for media connectivity.
+- Synthetic media tracks are used when browser media devices are unavailable, allowing restricted/headless environments to keep functioning.
+- The project is an educational/product prototype and does not claim Zoom’s production security, scale or compliance guarantees.
+
+## Documentation map
+
+| Guide | Use it for |
+| --- | --- |
+| [Architecture overview](docs/architecture/overview.md) | Components, boundaries, runtime flows and scaling path |
+| [Developer setup](docs/development/getting-started.md) | Local setup, environment variables, commands and troubleshooting |
+| [Asset catalog](docs/development/assets.md) | Frontend asset ownership and UI mapping |
+| [REST API](docs/api/rest-api.md) | HTTP endpoints, request bodies and response conventions |
+| [WebSocket/WebRTC protocol](docs/api/websocket-protocol.md) | Event envelopes, signaling lifecycle and media synchronization |
+| [Database schema](docs/database/schema.md) | Entities, relationships, indexes and persistence decisions |
+| [CI/CD and deployment](docs/CICD_SETUP.md) | Vercel, Render and GitHub Actions workflow |
+| [ADR 001](docs/decisions/adr-001-modular-monolith.md) | Why the project uses a modular monolith and WebRTC mesh |
+
+<div align="center">
+  <sub>Built as a thoughtful, documented full-stack systems project.</sub>
+</div>

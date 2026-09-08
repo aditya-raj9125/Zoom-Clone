@@ -1,110 +1,122 @@
-# WebSocket Protocol & WebRTC Signaling Reference
+# WebSocket and WebRTC Protocol
 
-Endpoint: `ws://127.0.0.1:8000/api/v1/ws/meetings/{meeting_id}?participant_id={participant_id}`
+Endpoint:
 
----
+```text
+ws://localhost:8000/api/v1/ws/meetings/{meeting_id}?participant_id={participant_id}
+```
 
-## 1. Handshake & Authentication
+Use `wss://` behind HTTPS.
 
-To establish a WebSocket connection:
-1. Participant must join the meeting via REST (`POST /api/v1/meetings/join` or `POST /api/v1/meetings/join-by-invite`).
-2. The response supplies an opaque `participant_id` and the WebSocket connection URL.
-3. Upon opening the WebSocket connection with the query parameter `?participant_id={participant_id}`, the server validates:
-   - Meeting exists and is in `live` or `waiting` status.
-   - Participant exists, is assigned to this meeting, and `is_active == True`.
-4. If validation fails, connection is closed with status code `4003` (Forbidden).
-
----
-
-## 2. WebRTC Peer-to-Peer Signaling
-
-The WebSocket connection acts as an authenticated signaling bus exchanging SDP session descriptions and ICE network candidates between participants.
+## Connection lifecycle
 
 ```mermaid
 sequenceDiagram
-    autonumber
-    participant PeerA as Peer A (Client)
-    participant WS as FastAPI WebSocket
-    participant PeerB as Peer B (Client)
+    participant Client
+    participant API as FastAPI WebSocket
+    participant Registry as ConnectionManager
+    participant Room as Other clients
 
-    PeerA->>WS: webrtc.offer (target: PeerB, sdp: ...)
-    WS->>PeerB: webrtc.offer (sender: PeerA, sdp: ...)
-
-    PeerB->>WS: webrtc.answer (target: PeerA, sdp: ...)
-    WS->>PeerA: webrtc.answer (sender: PeerB, sdp: ...)
-
-    PeerA->>WS: webrtc.ice_candidate (target: PeerB, candidate: ...)
-    WS->>PeerB: webrtc.ice_candidate (sender: PeerA, candidate: ...)
-
-    Note over PeerA,PeerB: Direct WebRTC P2P Media Established
+    Client->>API: Connect with meeting_id + participant_id
+    API->>API: Validate active membership
+    API->>Registry: Register socket
+    Registry-->>Client: Flush buffered signaling, if any
+    Registry-->>Room: participant.joined
+    Client->>API: Realtime messages
+    Client-->>API: Socket close
+    API->>Registry: Remove socket
+    Registry-->>Room: participant.left
 ```
 
-### Offer Payload (Client -> Server)
+The join event is emitted after the socket is registered. This makes a new participant reachable for signaling before another client starts negotiation.
+
+## Event envelope
+
+All server events use:
+
+```json
+{
+  "type": "participant.joined",
+  "meeting_id": "8461249264",
+  "timestamp": "2026-09-08T10:30:00+00:00",
+  "payload": {}
+}
+```
+
+Client signaling messages add `target_participant_id` at the top level:
+
 ```json
 {
   "type": "webrtc.offer",
-  "data": {
-    "target_participant_id": "PARTICIPANT_B_ID",
-    "sdp": "v=0\r\no=- 42 2 IN IP4 127.0.0.1...",
+  "target_participant_id": "target-participant-id",
+  "payload": {
+    "sdp": "v=0...",
     "type": "offer"
   }
 }
 ```
 
-### Answer Payload (Client -> Server)
-```json
-{
-  "type": "webrtc.answer",
-  "data": {
-    "target_participant_id": "PARTICIPANT_A_ID",
-    "sdp": "v=0\r\no=- 43 2 IN IP4 127.0.0.1...",
-    "type": "answer"
-  }
-}
+The server injects `from_participant_id` into forwarded signaling payloads.
+
+## Event catalog
+
+| Event | Direction | Meaning |
+| --- | --- | --- |
+| `meeting.started` / `meeting.ended` | Server → clients | Meeting lifecycle changed |
+| `participant.joined` / `participant.left` | Server → clients | Presence changed |
+| `participant.removed` | Server → clients | Host removed a participant |
+| `participant.audio_changed` | Server → clients | Microphone state changed |
+| `participant.video_changed` | Server → clients | Camera state changed |
+| `participant.muted` / `participant.unmuted` | Server → clients | Host moderation state |
+| `screen_share.started` / `.stopped` | Server → clients | Screen sharing changed |
+| `chat.message_created` | Server → clients | New persisted chat message |
+| `reaction.created` | Server → clients | New reaction |
+| `host.mute_all` | Server → clients | Host muted all non-host participants |
+| `webrtc.offer` | Client ↔ server relay | SDP offer |
+| `webrtc.answer` | Client ↔ server relay | SDP answer |
+| `webrtc.ice_candidate` | Client ↔ server relay | ICE candidate |
+| `ping` / `pong` | Client ↔ server | Connectivity check |
+
+## WebRTC negotiation
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant Initiator
+    participant Relay as WebSocket relay
+    participant Receiver
+
+    Initiator->>Initiator: Create peer connection
+    Initiator->>Relay: webrtc.offer
+    Relay-->>Receiver: webrtc.offer + from_participant_id
+    Receiver->>Receiver: Create peer connection
+    Receiver->>Receiver: setRemoteDescription(offer)
+    Receiver->>Relay: webrtc.answer
+    Relay-->>Initiator: webrtc.answer
+    Initiator->>Initiator: setRemoteDescription(answer)
+    Initiator-->>Relay: webrtc.ice_candidate*
+    Relay-->>Receiver: webrtc.ice_candidate*
+    Receiver-->>Relay: webrtc.ice_candidate*
+    Relay-->>Initiator: webrtc.ice_candidate*
+    Initiator<<->>Receiver: ICE connectivity checks
+    Receiver-->>Receiver: ontrack(MediaStreamTrack)
 ```
 
-### ICE Candidate Payload
-```json
-{
-  "type": "webrtc.ice_candidate",
-  "data": {
-    "target_participant_id": "TARGET_ID",
-    "candidate": {
-      "candidate": "candidate:1 1 UDP 2130706431 192.168.1.1 50000 typ host ...",
-      "sdpMid": "0",
-      "sdpMLineIndex": 0
-    }
-  }
-}
-```
+### Reliability rules
 
----
+- Exactly one client initiates a pair using a deterministic participant-ID ordering.
+- The server buffers targeted signaling events if the target socket is not registered yet.
+- The client queues ICE candidates until the matching remote description exists.
+- Signaling operations are serialized per remote participant to prevent offer/answer races.
+- Leaving or removal closes the peer connection, removes the remote stream and clears queued candidates.
+- Camera/microphone state is a durable REST mutation plus a realtime state event; media itself stays on the WebRTC connection.
 
-## 3. Realtime Broadcast Events (Server -> Client)
+## Close codes and errors
 
-All server-broadcast events adhere to the standard envelope:
-```json
-{
-  "event": "<event_name>",
-  "meeting_id": "8461249264",
-  "data": { ... },
-  "timestamp": "2026-09-07T10:30:00Z"
-}
-```
+| Code | Meaning |
+| --- | --- |
+| `4001` | Participant not found or inactive |
+| `4003` | Participant does not belong to the meeting |
+| `4004` | Meeting not found |
 
-### Supported Broadcast Events
-| Event Name | Trigger |
-|---|---|
-| `participant.joined` | New participant enters the room |
-| `participant.left` | Participant disconnects or leaves |
-| `participant.removed` | Host removes participant from meeting |
-| `participant.audio_changed` | Participant toggles microphone |
-| `participant.video_changed` | Participant toggles camera |
-| `participant.muted` / `unmuted` | Host mutes/unmutes participant |
-| `screen_share.started` | Participant starts screen sharing |
-| `screen_share.stopped` | Participant stops screen sharing |
-| `host.mute_all` | Host triggers mute-all |
-| `chat.message_created` | New message sent to in-meeting chat |
-| `reaction.created` | New emoji reaction submitted |
-| `meeting.started` | Host starts scheduled meeting |
-| `meeting.ended` | Host ends meeting for everyone |
+Invalid client messages receive an `error` event with a machine-readable `payload.code` and human-readable `payload.message`.

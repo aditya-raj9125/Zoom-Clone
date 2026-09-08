@@ -1,86 +1,81 @@
 # REST API Reference
 
-All REST endpoints are rooted at `/api/v1`.
+Base URL: `http://localhost:8000/api/v1`
 
-Interactive Swagger Documentation: `http://127.0.0.1:8000/docs`  
-ReDoc Documentation: `http://127.0.0.1:8000/redoc`
+Interactive references:
 
----
+- Swagger UI: `http://localhost:8000/docs`
+- ReDoc: `http://localhost:8000/redoc`
 
-## 1. System Health
-### `GET /api/v1/health`
-- **Description**: Probes service status and database connectivity.
-- **Response**: `200 OK`
+## Conventions
+
+- Request and response bodies use JSON.
+- Timestamps are ISO 8601 UTC strings.
+- Participant-scoped operations require `actor_participant_id` as a query parameter.
+- Domain errors use a consistent shape:
+
 ```json
 {
-  "status": "ok",
-  "database": "connected"
+  "error": {
+    "code": "INVALID_PASSCODE",
+    "message": "The supplied passcode is invalid."
+  }
 }
 ```
 
----
+## Endpoint map
 
-## 2. Users
-### `GET /api/v1/users/me`
-- **Description**: Retrieves the default seeded user (`Aditya Raj`).
-- **Response**: `200 OK`
-```json
-{
-  "id": "77385e67-04a7-4b71-8e9a-e00bef4f621e",
-  "display_name": "Aditya Raj",
-  "email": "aditya.raj@zoomclone.local",
-  "avatar_url": null,
-  "is_default_user": true,
-  "created_at": "2026-09-07T10:00:00Z"
-}
+### Health and identity
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| `GET` | `/health` | Verify service and database availability |
+| `POST` | `/auth/register` | Register a local user |
+| `POST` | `/auth/login` | Issue an access token |
+| `POST` | `/auth/logout` | End the current auth session |
+| `GET` | `/auth/me` | Return the current user |
+| `GET` | `/users/me` | Return the current/default user profile |
+
+### Meetings
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| `POST` | `/meetings` | Create an instant `LIVE` meeting |
+| `POST` | `/meetings/schedule` | Schedule a future meeting |
+| `GET` | `/meetings/upcoming` | List upcoming meetings |
+| `GET` | `/meetings/recent?page=1&page_size=20` | Paginated recent meetings |
+| `GET` | `/meetings/{meeting_id}` | Read public meeting details |
+| `POST` | `/meetings/{meeting_id}/start?actor_participant_id={pid}` | Host starts a scheduled meeting |
+| `POST` | `/meetings/{meeting_id}/end?actor_participant_id={pid}` | Host ends a live meeting |
+
+Create an instant meeting:
+
+```http
+POST /api/v1/meetings
+Content-Type: application/json
+
+{"title":"Design sync","description":"Weekly review"}
 ```
 
----
+The response includes a public 10-digit meeting ID, passcode, invite token/link, lifecycle status and host information.
 
-## 3. Meetings Lifecycle
-### `POST /api/v1/meetings`
-- **Description**: Creates an instant meeting in `live` status.
-- **Request Body**:
-```json
-{
-  "title": "Quick Sync",
-  "description": "Optional agenda"
-}
-```
-- **Response**: `201 Created`
+### Participants and moderation
 
-### `POST /api/v1/meetings/schedule`
-- **Description**: Schedules a future meeting. Validates that start time is in the future (UTC) and duration is between 1 and 1440 minutes.
-- **Request Body**:
-```json
-{
-  "title": "Design Review",
-  "scheduled_start_at": "2026-09-08T15:00:00Z",
-  "duration_minutes": 45
-}
-```
-- **Response**: `201 Created`
+| Method | Path | Purpose |
+| --- | --- | --- |
+| `POST` | `/meetings/join` | Join by meeting ID and passcode |
+| `POST` | `/meetings/join-by-invite` | Join with an invite token |
+| `GET` | `/meetings/{meeting_id}/participants` | List active participants |
+| `POST` | `/meetings/{meeting_id}/participants/{pid}/leave?actor_participant_id={pid}` | Leave voluntarily |
+| `PATCH` | `/meetings/{meeting_id}/participants/{pid}/audio?actor_participant_id={pid}` | Set microphone state |
+| `PATCH` | `/meetings/{meeting_id}/participants/{pid}/video?actor_participant_id={pid}` | Set camera state |
+| `PATCH` | `/meetings/{meeting_id}/participants/{pid}/screen-share?actor_participant_id={pid}` | Set screen-share state |
+| `POST` | `/meetings/{meeting_id}/participants/{pid}/mute?actor_participant_id={host_pid}` | Host mutes one participant |
+| `POST` | `/meetings/{meeting_id}/mute-all?actor_participant_id={host_pid}` | Host mutes all non-host participants |
+| `DELETE` | `/meetings/{meeting_id}/participants/{pid}?actor_participant_id={host_pid}` | Host removes a participant |
 
-### `GET /api/v1/meetings/upcoming`
-- **Description**: Returns all future scheduled meetings for current user, ordered by `scheduled_start_at ASC`.
+Join request:
 
-### `GET /api/v1/meetings/recent?page=1&page_size=20`
-- **Description**: Returns a paginated list of past/created meetings ordered by creation time descending.
-
-### `GET /api/v1/meetings/{meeting_id}`
-- **Description**: Looks up public details for a 10-digit meeting ID.
-
-### `POST /api/v1/meetings/{meeting_id}/start`
-- **Description**: Transitions a scheduled meeting to `live`. Host authorization required via `?actor_participant_id={host_pid}`.
-
-### `POST /api/v1/meetings/{meeting_id}/end`
-- **Description**: Host concludes meeting. Transitions status to `ended`, deactivates all participants, and disconnects all WebSocket sockets.
-
----
-
-## 4. Participants & Moderation
-### `POST /api/v1/meetings/join`
-- **Request Body**:
 ```json
 {
   "meeting_id": "8461249264",
@@ -88,57 +83,52 @@ ReDoc Documentation: `http://127.0.0.1:8000/redoc`
   "passcode": "eWklt0"
 }
 ```
-- **Response**: `200 OK`
+
+Media state requests:
+
+```json
+{"enabled": true}
+```
+
+```json
+{"sharing": true}
+```
+
+### Chat and reactions
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| `GET` | `/meetings/{meeting_id}/chat` | Read chronological chat history |
+| `POST` | `/meetings/{meeting_id}/chat` | Persist and broadcast a chat message |
+| `POST` | `/meetings/{meeting_id}/reactions` | Persist and broadcast an emoji reaction |
+
+Chat request:
+
 ```json
 {
-  "participant_id": "bOI_AkJ7uhv-GqBMMadvbw",
-  "meeting_id": "8461249264",
-  "display_name": "Priya Sharma",
-  "role": "participant",
-  "is_host": false,
-  "websocket_url": "ws://localhost:8000/api/v1/ws/meetings/8461249264",
-  "meeting": { ... }
+  "participant_id": "opaque-participant-id",
+  "message": "Hello everyone"
 }
 ```
 
-### `POST /api/v1/meetings/join-by-invite`
-- **Request Body**:
-```json
-{
-  "invite_token": "uypnWppDTqvcpSMFfVZ0gjbpkGQQPsXV-LwlxOO45oo",
-  "display_name": "Guest Participant"
-}
+Reaction types: `thumbs_up`, `clap`, `heart`, `laugh`, `surprised`, `celebrate`.
+
+## REST-to-realtime relationship
+
+REST mutations are authoritative for durable participant/media state. After a successful mutation, the service broadcasts a WebSocket event so every connected client updates without polling or refreshing the page.
+
+```mermaid
+sequenceDiagram
+    participant UI as Browser UI
+    participant API as REST endpoint
+    participant DB as Database
+    participant WS as ConnectionManager
+    participant Peer as Other browsers
+
+    UI->>API: PATCH media state
+    API->>DB: Validate + persist
+    DB-->>API: Commit
+    API->>WS: Broadcast media event
+    WS-->>Peer: participant.audio_changed / video_changed
+    API-->>UI: Updated ParticipantResponse
 ```
-
-### `GET /api/v1/meetings/{meeting_id}/participants`
-- **Description**: Lists active participants currently inside the meeting room.
-
-### `PATCH /api/v1/meetings/{meeting_id}/participants/{pid}/audio`
-- **Request Body**: `{"enabled": true}`
-
-### `PATCH /api/v1/meetings/{meeting_id}/participants/{pid}/video`
-- **Request Body**: `{"enabled": false}`
-
-### `PATCH /api/v1/meetings/{meeting_id}/participants/{pid}/screen-share`
-- **Request Body**: `{"sharing": true}` (Arbitrated: stops existing sharer).
-
-### `POST /api/v1/meetings/{meeting_id}/participants/{pid}/mute`
-- **Description**: Host mutes specific participant.
-
-### `POST /api/v1/meetings/{meeting_id}/mute-all`
-- **Description**: Host mutes all active non-host participants.
-
-### `DELETE /api/v1/meetings/{meeting_id}/participants/{pid}`
-- **Description**: Host kicks/removes a participant from the meeting.
-
----
-
-## 5. In-Meeting Chat & Reactions
-### `GET /api/v1/meetings/{meeting_id}/chat`
-- **Description**: Retrieves chronological chat messages for the meeting.
-
-### `POST /api/v1/meetings/{meeting_id}/chat`
-- **Request Body**: `{"participant_id": "pid", "message": "Hello world!"}`
-
-### `POST /api/v1/meetings/{meeting_id}/reactions`
-- **Request Body**: `{"participant_id": "pid", "reaction_type": "clap"}`

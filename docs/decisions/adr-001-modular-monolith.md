@@ -1,27 +1,74 @@
-# ADR 001: Modular Monolith Architecture & WebRTC Mesh Signaling
+# ADR 001: Modular Monolith and WebRTC Mesh
 
-## Status
-Accepted
+| Field | Decision |
+| --- | --- |
+| Status | Accepted |
+| Date | 2026-09-08 |
+| Scope | Application structure, realtime signaling and media transport |
 
 ## Context
-The project is a Zoom Clone built for evaluation by Google engineers. It requires a clean separation of concerns, robust meeting state coordination, real-time collaboration (presence, chat, reactions), and audio/video WebRTC media streams.
 
-We evaluated two architectural approaches:
-1. Microservices / Distributed Architecture (Kubernetes, Kafka, Redis, separate auth/meeting/chat services, external SFU like LiveKit or Mediasoup).
-2. Modular Monolith with layered domain boundaries (FastAPI, SQLite async, WebSocket signaling bus, peer-to-peer WebRTC mesh with clean SFU abstraction boundary).
+The project needs meeting lifecycle coordination, participant presence, host controls, chat, reactions and browser audio/video while remaining easy to install and evaluate. A distributed stack with separate services, Redis and an SFU would add operational overhead before the product boundaries are proven.
 
 ## Decision
-We chose the **Modular Monolith** architecture:
-- **FastAPI Core**: Encapsulates feature domains (`users`, `meetings`, `participants`, `chat`, `reactions`, `realtime`) behind dedicated services and repositories. Routes contain zero business logic.
-- **SQLite with aiosqlite**: Delivers zero-infrastructure local setup while retaining full SQL relational modeling and ACID guarantees.
-- **WebSocket Signaling**: Relays standard SDP offers, answers, and ICE candidates without coupling application logic to media transport.
-- **Monorepo Layout**: Segregates `apps/` (runnable web & api) from `packages/` (reusable UI and contracts), establishing a contract-first interface between Next.js and FastAPI.
+
+Use a **modular monolith** for the API and a **peer-to-peer WebRTC mesh** for media.
+
+```mermaid
+flowchart LR
+    Routes["FastAPI routers"] --> Services["Feature services"]
+    Services --> Repositories["Repositories"]
+    Repositories --> DB[("SQLite / future Postgres")]
+    Services --> Events["Realtime events"]
+    Events --> WS["WebSocket signaling"]
+    WS --> Mesh["Browser WebRTC mesh"]
+```
+
+The feature boundaries are:
+
+- `users`: identity and profile access.
+- `meetings`: creation, scheduling and lifecycle state machine.
+- `participants`: join/leave, media flags and moderation.
+- `realtime`: WebSocket registry, event envelopes and WebRTC relay.
+- `chat`: persisted chat and broadcast.
+- `reactions`: reaction records and broadcast.
+
+## Why this fits the project
+
+### Benefits
+
+- One API process and one SQLite database provide zero-infrastructure local setup.
+- Domain services keep routers thin and business rules testable.
+- WebSocket signaling is decoupled from media transport.
+- Shared TypeScript contracts make client/server payload changes visible.
+- The database model can remain stable if media transport changes later.
+
+### Trade-offs
+
+- P2P mesh bandwidth grows with participant count and is best for small rooms.
+- The in-memory connection registry is process-local.
+- SQLite is not the desired durable store for horizontally scaled production.
+- TURN and SFU infrastructure are not included in the prototype deployment.
 
 ## Consequences
-### Positive
-- **Simplicity & Zero-Friction Setup**: No Docker, Redis, or external C++ media server installation required to run the test suite or local dev.
-- **Zero Business Logic Coupling**: Meeting services only manage lifecycle and authorization; they are unaware of whether media is P2P or SFU.
-- **Extensible to SFU**: If scaling beyond 4+ participants is required in Phase 2, an SFU (e.g. LiveKit or Mediasoup) can be plugged directly into the WebSocket signaling layer without modifying any database schemas or REST endpoints.
 
-### Negative / Trade-offs
-- Pure P2P mesh WebRTC scales uplink bandwidth at $O(N)$, which is optimal for 2–4 participants but requires an SFU for larger groups.
+### Positive
+
+- Developers can run the full stack with Python, Node.js and a browser.
+- Meeting state, authorization and persistence remain on the server.
+- WebRTC synchronization can be tested independently from the REST domain services.
+
+### Negative
+
+- Scaling requires replacing or extending the in-memory realtime layer.
+- Larger meetings require an SFU such as LiveKit or mediasoup.
+- Production security, observability, backups and compliance need additional work.
+
+## Revisit criteria
+
+Reconsider this decision when any of the following becomes true:
+
+1. Meetings regularly exceed the practical P2P mesh size.
+2. Multiple API instances are required.
+3. Durable production storage and cross-region recovery become requirements.
+4. A managed identity, media or realtime platform is available and justified.
