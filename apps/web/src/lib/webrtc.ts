@@ -12,6 +12,9 @@ export interface LocalMediaState {
   screenStream: MediaStream | null;
 }
 
+const METERED_CREDENTIALS_API =
+  "https://doudizhu-online.metered.live/api/v1/turn/credentials?apiKey=69960ccff638874fa5ab1dcb405d13b1097f";
+
 const DEFAULT_ICE_SERVERS: RTCIceServer[] = [
   // Google Public STUN
   { urls: "stun:stun.l.google.com:19302" },
@@ -21,22 +24,42 @@ const DEFAULT_ICE_SERVERS: RTCIceServer[] = [
   { urls: "stun:stun4.l.google.com:19302" },
   // Cloudflare Public STUN
   { urls: "stun:stun.cloudflare.com:3478" },
-  // OpenRelay Public STUN
-  { urls: "stun:openrelay.metered.ca:80" },
-  // OpenRelay Free Global TURN Relays (UDP + TCP over ports 80, 443, and 3478)
+  // Metered STUN
+  { urls: "stun:stun.relay.metered.ca:80" },
+  // Metered Global TURN Relays (Verified & Authenticated: UDP + TCP + TLS over 80 and 443)
   {
     urls: [
-      "turn:openrelay.metered.ca:80",
-      "turn:openrelay.metered.ca:80?transport=tcp",
-      "turn:openrelay.metered.ca:443",
-      "turn:openrelay.metered.ca:443?transport=tcp",
-      "turn:openrelay.metered.ca:3478",
-      "turn:openrelay.metered.ca:3478?transport=tcp",
+      "turn:global.relay.metered.ca:80",
+      "turn:global.relay.metered.ca:80?transport=tcp",
+      "turn:global.relay.metered.ca:443",
+      "turn:global.relay.metered.ca:443?transport=tcp",
+      "turns:global.relay.metered.ca:443?transport=tcp",
     ],
-    username: "openrelayproject",
-    credential: "openrelayproject",
+    username: "9264d51bf7b61ba6f3c250bd",
+    credential: "wNe5ZCN1gAGNqtmK",
   },
 ];
+
+let activeIceServers: RTCIceServer[] = DEFAULT_ICE_SERVERS;
+
+// Pre-fetch fresh dynamic TURN credentials on load
+if (typeof fetch !== "undefined") {
+  fetch(METERED_CREDENTIALS_API)
+    .then((res) => res.json())
+    .then((servers) => {
+      if (Array.isArray(servers) && servers.length > 0) {
+        activeIceServers = [
+          { urls: "stun:stun.l.google.com:19302" },
+          { urls: "stun:stun1.l.google.com:19302" },
+          ...servers,
+        ];
+        console.log("[WebRTC] Dynamic TURN servers loaded from Metered.");
+      }
+    })
+    .catch(() => {
+      // Fallback to verified default ICE servers
+    });
+}
 
 /**
  * Reads the deploy-time ICE configuration. A TURN relay is required for
@@ -44,20 +67,20 @@ const DEFAULT_ICE_SERVERS: RTCIceServer[] = [
  */
 function getIceServers(): RTCIceServer[] {
   const raw = process.env.NEXT_PUBLIC_WEBRTC_ICE_SERVERS;
-  if (!raw) return DEFAULT_ICE_SERVERS;
+  if (!raw) return activeIceServers;
 
   try {
     const configured: unknown = JSON.parse(raw);
-    if (!Array.isArray(configured)) return DEFAULT_ICE_SERVERS;
+    if (!Array.isArray(configured)) return activeIceServers;
     const valid = configured.filter((server): server is RTCIceServer => {
       if (!server || typeof server !== "object" || !("urls" in server)) return false;
       const urls = (server as { urls?: unknown }).urls;
       return typeof urls === "string" || (Array.isArray(urls) && urls.every((url) => typeof url === "string"));
     });
-    return valid.length > 0 ? valid : DEFAULT_ICE_SERVERS;
+    return valid.length > 0 ? valid : activeIceServers;
   } catch {
-    console.warn("Invalid NEXT_PUBLIC_WEBRTC_ICE_SERVERS; using STUN fallback.");
-    return DEFAULT_ICE_SERVERS;
+    console.warn("Invalid NEXT_PUBLIC_WEBRTC_ICE_SERVERS; using active fallback.");
+    return activeIceServers;
   }
 }
 
@@ -510,10 +533,14 @@ export class WebRTCManager {
       stream = incomingStream ? new MediaStream(incomingStream.getTracks()) : new MediaStream();
     }
 
-    // Replace any stale track of the same kind if IDs differ
-    const existingTrack = stream.getTracks().find((t) => t.kind === track.kind);
-    if (existingTrack && existingTrack.id !== track.id) {
-      stream.removeTrack(existingTrack);
+    const currentTrackOfKind = stream.getTracks().find((t) => t.kind === track.kind);
+    if (currentTrackOfKind && currentTrackOfKind.id === track.id) {
+      // Track is already registered and present. Do not emit duplicate stream references.
+      return;
+    }
+
+    if (currentTrackOfKind && currentTrackOfKind.id !== track.id) {
+      stream.removeTrack(currentTrackOfKind);
     }
     if (!stream.getTracks().some((t) => t.id === track.id)) {
       stream.addTrack(track);
@@ -592,7 +619,7 @@ export class WebRTCManager {
       void this.createAndSendOffer(peer, participantId, true).catch((error) => {
         console.warn(`[WebRTC] ICE recovery offer failed for ${participantId}:`, error);
       });
-    }, 1500);
+    }, 2500);
   }
 
   private createPeerConnection(participantId: string): RTCPeerConnection {
@@ -604,7 +631,7 @@ export class WebRTCManager {
 
     const peer = new RTCPeerConnection({
       iceServers: getIceServers(),
-      iceCandidatePoolSize: 2,
+      iceCandidatePoolSize: 0,
       bundlePolicy: "max-bundle",
       rtcpMuxPolicy: "require",
     });

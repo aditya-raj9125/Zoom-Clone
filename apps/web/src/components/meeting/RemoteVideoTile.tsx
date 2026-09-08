@@ -21,27 +21,8 @@ export function RemoteVideoTile({
 }: RemoteVideoTileProps) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
-  const [trackTick, setTrackTick] = React.useState(0);
-
-  // Re-check live status on track events (unmute, addtrack, etc.)
-  useEffect(() => {
-    if (!stream) return;
-    const trigger = () => setTrackTick((prev) => prev + 1);
-    stream.addEventListener("addtrack", trigger);
-    stream.addEventListener("removetrack", trigger);
-    stream.getVideoTracks().forEach((t) => {
-      t.addEventListener("unmute", trigger);
-      t.addEventListener("mute", trigger);
-    });
-    return () => {
-      stream.removeEventListener("addtrack", trigger);
-      stream.removeEventListener("removetrack", trigger);
-      stream.getVideoTracks().forEach((t) => {
-        t.removeEventListener("unmute", trigger);
-        t.removeEventListener("mute", trigger);
-      });
-    };
-  }, [stream]);
+  const currentVideoTrackIdRef = useRef<string | null>(null);
+  const currentAudioTrackIdRef = useRef<string | null>(null);
 
   // Check if stream has an active video track
   const videoTrack = stream?.getVideoTracks()[0];
@@ -49,52 +30,56 @@ export function RemoteVideoTile({
     videoTrack && videoTrack.readyState === "live"
   );
 
-  // Dedicated audio playback ensures remote audio is never blocked by video state
+  // Audio stream attachment — only re-assign if audio track ID changes
   useEffect(() => {
-    if (audioRef.current) {
-      if (stream && stream.getAudioTracks().length > 0) {
-        audioRef.current.srcObject = stream;
-        audioRef.current.play().catch((err) => {
-          console.warn("[RemoteVideoTile] Audio autoplay blocked:", err);
-        });
-      } else {
-        audioRef.current.srcObject = null;
-      }
-    }
-  }, [stream, trackTick]);
+    const audioNode = audioRef.current;
+    if (!audioNode) return;
 
-  // Callback ref ensures srcObject is attached immediately on DOM mount
-  const bindVideo = (node: HTMLVideoElement | null) => {
-    videoRef.current = node;
-    if (node) {
-      if (stream && stream.getVideoTracks().length > 0) {
-        if (node.srcObject !== stream) {
-          node.srcObject = stream;
-        }
-        node.play().catch((err) => {
-          console.warn("[RemoteVideoTile] Video play error:", err);
+    const audioTrack = stream?.getAudioTracks()[0];
+    if (audioTrack && audioTrack.readyState === "live") {
+      if (currentAudioTrackIdRef.current !== audioTrack.id || audioNode.srcObject !== stream) {
+        currentAudioTrackIdRef.current = audioTrack.id;
+        audioNode.srcObject = stream;
+        audioNode.play().catch((err) => {
+          if (err.name !== "AbortError") {
+            console.warn("[RemoteVideoTile] Audio autoplay blocked:", err);
+          }
         });
-      } else {
-        node.srcObject = null;
       }
+    } else {
+      currentAudioTrackIdRef.current = null;
+      audioNode.srcObject = null;
+    }
+  }, [stream]);
+
+  // Video stream attachment — only re-assign if video track ID changes
+  const attachVideoSource = (node: HTMLVideoElement | null) => {
+    if (!node) return;
+    const currentTrack = stream?.getVideoTracks()[0];
+    if (currentTrack && currentTrack.readyState === "live") {
+      if (currentVideoTrackIdRef.current !== currentTrack.id || node.srcObject !== stream) {
+        currentVideoTrackIdRef.current = currentTrack.id;
+        node.srcObject = stream;
+        node.play().catch((err) => {
+          if (err.name !== "AbortError") {
+            console.warn("[RemoteVideoTile] Video play error:", err);
+          }
+        });
+      }
+    } else {
+      currentVideoTrackIdRef.current = null;
+      node.srcObject = null;
     }
   };
 
-  // Video element binding effect
+  const bindVideo = (node: HTMLVideoElement | null) => {
+    videoRef.current = node;
+    attachVideoSource(node);
+  };
+
   useEffect(() => {
-    if (videoRef.current) {
-      if (stream && stream.getVideoTracks().length > 0) {
-        if (videoRef.current.srcObject !== stream) {
-          videoRef.current.srcObject = stream;
-        }
-        videoRef.current.play().catch((err) => {
-          console.warn("[RemoteVideoTile] Video play error:", err);
-        });
-      } else {
-        videoRef.current.srcObject = null;
-      }
-    }
-  }, [stream, hasLiveVideoTrack, participant.video_enabled, trackTick]);
+    attachVideoSource(videoRef.current);
+  }, [stream, hasLiveVideoTrack]);
 
   // Compute initials
   const initials = participant.display_name
@@ -107,9 +92,7 @@ export function RemoteVideoTile({
 
   const showVideo = Boolean(
     hasLiveVideoTrack &&
-    participant.video_enabled !== false &&
-    stream &&
-    stream.getVideoTracks().length > 0
+    participant.video_enabled !== false
   );
 
   return (
