@@ -21,17 +21,38 @@ export function RemoteVideoTile({
 }: RemoteVideoTileProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const audioRef = useRef<HTMLAudioElement>(null);
+  const [trackTick, setTrackTick] = React.useState(0);
 
-  // Check if stream has an active, live video track
+  // Re-check live status on track events (unmute, addtrack, etc.)
+  useEffect(() => {
+    if (!stream) return;
+    const trigger = () => setTrackTick((prev) => prev + 1);
+    stream.addEventListener("addtrack", trigger);
+    stream.addEventListener("removetrack", trigger);
+    stream.getVideoTracks().forEach((t) => {
+      t.addEventListener("unmute", trigger);
+      t.addEventListener("mute", trigger);
+    });
+    return () => {
+      stream.removeEventListener("addtrack", trigger);
+      stream.removeEventListener("removetrack", trigger);
+      stream.getVideoTracks().forEach((t) => {
+        t.removeEventListener("unmute", trigger);
+        t.removeEventListener("mute", trigger);
+      });
+    };
+  }, [stream]);
+
+  // Check if stream has an active video track
+  const videoTrack = stream?.getVideoTracks()[0];
   const hasLiveVideoTrack = Boolean(
-    stream &&
-    stream.getVideoTracks().some((t) => t.readyState === "live" && t.enabled)
+    videoTrack && videoTrack.readyState === "live" && videoTrack.enabled
   );
 
   // Dedicated audio playback ensures remote audio is never blocked by video state
   useEffect(() => {
     if (audioRef.current) {
-      if (stream) {
+      if (stream && stream.getAudioTracks().length > 0) {
         audioRef.current.srcObject = stream;
         audioRef.current.play().catch((err) => {
           console.warn("[RemoteVideoTile] Audio autoplay blocked:", err);
@@ -40,13 +61,32 @@ export function RemoteVideoTile({
         audioRef.current.srcObject = null;
       }
     }
-  }, [stream]);
+  }, [stream, trackTick]);
 
-  // Video element binding (muted so browser autoplay policies never block it)
+  // Callback ref ensures srcObject is attached immediately on DOM mount
+  const bindVideo = (node: HTMLVideoElement | null) => {
+    (videoRef as React.MutableRefObject<HTMLVideoElement | null>).current = node;
+    if (node) {
+      if (stream && stream.getVideoTracks().length > 0) {
+        if (node.srcObject !== stream) {
+          node.srcObject = stream;
+        }
+        node.play().catch((err) => {
+          console.warn("[RemoteVideoTile] Video play error:", err);
+        });
+      } else {
+        node.srcObject = null;
+      }
+    }
+  };
+
+  // Video element binding effect
   useEffect(() => {
     if (videoRef.current) {
-      if (stream && (hasLiveVideoTrack || participant.video_enabled)) {
-        videoRef.current.srcObject = stream;
+      if (stream && stream.getVideoTracks().length > 0) {
+        if (videoRef.current.srcObject !== stream) {
+          videoRef.current.srcObject = stream;
+        }
         videoRef.current.play().catch((err) => {
           console.warn("[RemoteVideoTile] Video play error:", err);
         });
@@ -54,7 +94,7 @@ export function RemoteVideoTile({
         videoRef.current.srcObject = null;
       }
     }
-  }, [stream, hasLiveVideoTrack, participant.video_enabled]);
+  }, [stream, hasLiveVideoTrack, participant.video_enabled, trackTick]);
 
   // Compute initials
   const initials = participant.display_name
@@ -65,7 +105,12 @@ export function RemoteVideoTile({
     .join("")
     .toUpperCase() || "U";
 
-  const showVideo = Boolean(hasLiveVideoTrack && participant.video_enabled !== false);
+  const showVideo = Boolean(
+    hasLiveVideoTrack &&
+    participant.video_enabled !== false &&
+    stream &&
+    stream.getVideoTracks().length > 0
+  );
 
   return (
     <div
@@ -76,34 +121,36 @@ export function RemoteVideoTile({
       {/* Hidden audio element ensuring remote audio plays even if video is off */}
       <audio ref={audioRef} autoPlay playsInline />
 
-      {/* Video Element (muted so it only renders video and avoids browser autoplay blocks) */}
+      {/* Video Element - kept active in DOM with opacity transition to avoid browser decode pause */}
       <video
-        ref={videoRef}
+        ref={bindVideo}
         autoPlay
         playsInline
         muted
-        className={`w-full h-full object-cover transition-opacity duration-300 ${
-          showVideo ? "opacity-100 block" : "opacity-0 hidden"
+        className={`absolute inset-0 w-full h-full object-cover transition-opacity duration-300 ${
+          showVideo ? "opacity-100 z-10 pointer-events-auto" : "opacity-0 z-0 pointer-events-none"
         }`}
       />
 
-      {/* Avatar Fallback (when video is turned off) */}
-      {!showVideo && (
-        <div className="flex flex-col items-center justify-center gap-3">
-          <div
-            className={`rounded-full bg-[#24272C] border border-white/15 text-white font-bold flex items-center justify-center shadow-inner ${
-              isMainStage ? "w-28 h-28 text-3xl" : "w-16 h-16 text-xl"
-            }`}
-          >
-            {initials}
-          </div>
-          {isMainStage && (
-            <h2 className="text-xl sm:text-2xl font-semibold text-white tracking-tight">
-              {participant.display_name}
-            </h2>
-          )}
+      {/* Avatar Fallback (when video is turned off or not yet streaming) */}
+      <div
+        className={`relative flex flex-col items-center justify-center gap-3 z-0 transition-opacity duration-200 ${
+          showVideo ? "opacity-0" : "opacity-100"
+        }`}
+      >
+        <div
+          className={`rounded-full bg-[#24272C] border border-white/15 text-white font-bold flex items-center justify-center shadow-inner ${
+            isMainStage ? "w-28 h-28 text-3xl" : "w-16 h-16 text-xl"
+          }`}
+        >
+          {initials}
         </div>
-      )}
+        {isMainStage && (
+          <h2 className="text-xl sm:text-2xl font-semibold text-white tracking-tight">
+            {participant.display_name}
+          </h2>
+        )}
+      </div>
 
       {/* Bottom Name & Media Badges */}
       <div className="absolute bottom-2.5 left-2.5 px-2 py-1 rounded-md bg-black/60 backdrop-blur-sm text-[11px] font-medium text-white flex items-center gap-1.5 shadow-md z-10 border border-white/5">

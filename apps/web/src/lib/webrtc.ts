@@ -13,8 +13,22 @@ export interface LocalMediaState {
 }
 
 const DEFAULT_ICE_SERVERS: RTCIceServer[] = [
+  // Google Public STUN
   { urls: "stun:stun.l.google.com:19302" },
+  { urls: "stun:stun1.l.google.com:19302" },
+  { urls: "stun:stun2.l.google.com:19302" },
+  // Cloudflare Public STUN
   { urls: "stun:stun.cloudflare.com:3478" },
+  // OpenRelay Free Global TURN Relays (UDP + TCP + TLS over 80/443/3478)
+  {
+    urls: [
+      "turn:openrelay.metered.ca:80",
+      "turn:openrelay.metered.ca:443",
+      "turn:openrelay.metered.ca:443?transport=tcp",
+    ],
+    username: "openrelayproject",
+    credential: "openrelayproject",
+  },
 ];
 
 /**
@@ -415,10 +429,10 @@ export class WebRTCManager {
     } else if (event === "webrtc.ice_candidate") {
       const peer = this.peers.get(senderId);
       const candidateInit = payload.candidate as RTCIceCandidateInit;
-      if (candidateInit) {
+      if (candidateInit && candidateInit.candidate) {
         if (peer && peer.remoteDescription && peer.remoteDescription.type) {
           try {
-            await peer.addIceCandidate(new RTCIceCandidate(candidateInit));
+            await peer.addIceCandidate(candidateInit);
           } catch (err) {
             console.warn("Error adding ICE candidate:", err);
           }
@@ -436,8 +450,9 @@ export class WebRTCManager {
     const queued = this.iceCandidatesQueue.get(senderId) || [];
     this.iceCandidatesQueue.delete(senderId);
     for (const cand of queued) {
+      if (!cand || !cand.candidate) continue;
       try {
-        await peer.addIceCandidate(new RTCIceCandidate(cand));
+        await peer.addIceCandidate(cand);
       } catch (err) {
         console.warn("Error adding queued ICE candidate:", err);
       }
@@ -476,6 +491,24 @@ export class WebRTCManager {
     });
   }
 
+  private attemptIceRecovery(participantId: string, peer: RTCPeerConnection): void {
+    if (this.localParticipantId.localeCompare(participantId) >= 0) return;
+
+    const attempts = this.iceRestartAttempts.get(participantId) || 0;
+    if (attempts >= 3) {
+      console.error(`[WebRTC] Connection failed permanently after 3 attempts for ${participantId}.`);
+      return;
+    }
+    this.iceRestartAttempts.set(participantId, attempts + 1);
+    console.warn(`[WebRTC] Initiating ICE recovery attempt ${attempts + 1}/3 for ${participantId}...`);
+    setTimeout(() => {
+      if (peer.connectionState === "connected" || peer.iceConnectionState === "connected") return;
+      void this.createAndSendOffer(peer, participantId, true).catch((error) => {
+        console.warn(`[WebRTC] ICE recovery offer failed for ${participantId}:`, error);
+      });
+    }, 1200);
+  }
+
   private createPeerConnection(participantId: string): RTCPeerConnection {
     // If an existing peer connection is present, close it first
     const existing = this.peers.get(participantId);
@@ -497,7 +530,7 @@ export class WebRTCManager {
     }
 
     peer.onicecandidate = (e) => {
-      if (e.candidate) {
+      if (e.candidate && e.candidate.candidate) {
         this.sendSignalingMessage("webrtc.ice_candidate", {
           target_participant_id: participantId,
           payload: {
@@ -507,31 +540,28 @@ export class WebRTCManager {
       }
     };
 
+    peer.oniceconnectionstatechange = () => {
+      console.log(`[WebRTC] Peer ${participantId} iceConnectionState=${peer.iceConnectionState}`);
+      if (peer.iceConnectionState === "connected" || peer.iceConnectionState === "completed") {
+        this.iceRestartAttempts.delete(participantId);
+      } else if (peer.iceConnectionState === "failed" || peer.iceConnectionState === "disconnected") {
+        this.attemptIceRecovery(participantId, peer);
+      }
+    };
+
     peer.onconnectionstatechange = () => {
+      console.log(`[WebRTC] Peer ${participantId} connectionState=${peer.connectionState}`);
       if (peer.connectionState === "connected") {
         this.iceRestartAttempts.delete(participantId);
         return;
       }
-      if (peer.connectionState !== "failed") return;
-
-      // Keep one deterministic offer owner per pair during recovery too.
-      // Otherwise both peers can restart ICE simultaneously and reintroduce
-      // offer glare after a transient network failure.
-      if (this.localParticipantId.localeCompare(participantId) >= 0) return;
-
-      const attempts = this.iceRestartAttempts.get(participantId) || 0;
-      if (attempts >= 1) {
-        console.error(`[WebRTC] Connection failed permanently for ${participantId}.`);
-        return;
+      if (peer.connectionState === "failed") {
+        this.attemptIceRecovery(participantId, peer);
       }
-      this.iceRestartAttempts.set(participantId, attempts + 1);
-      void this.createAndSendOffer(peer, participantId, true).catch((error) => {
-        console.warn(`[WebRTC] ICE restart failed for ${participantId}:`, error);
-      });
     };
 
     peer.ontrack = (e) => {
-      console.log(`[WebRTC] ontrack from ${participantId}: kind=${e.track.kind}, id=${e.track.id}`);
+      console.log(`[WebRTC] ontrack from ${participantId}: kind=${e.track.kind}, id=${e.track.id}, readyState=${e.track.readyState}`);
       let stream = this.remoteStreams.get(participantId);
       if (!stream) {
         stream = new MediaStream();
@@ -547,6 +577,13 @@ export class WebRTCManager {
       // Re-create a fresh MediaStream instance so React components detect new object reference
       const refreshedStream = new MediaStream(stream.getTracks());
       this.remoteStreams.set(participantId, refreshedStream);
+
+      // Ensure that when track unmutes (packets start arriving), callback is triggered again
+      e.track.onunmute = () => {
+        console.log(`[WebRTC] track onunmute from ${participantId}: kind=${e.track.kind}`);
+        const currentStream = this.remoteStreams.get(participantId) || refreshedStream;
+        this.onRemoteTrackCallback?.(participantId, e.track, new MediaStream(currentStream.getTracks()));
+      };
 
       if (this.onRemoteTrackCallback) {
         this.onRemoteTrackCallback(participantId, e.track, refreshedStream);
