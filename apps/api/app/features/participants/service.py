@@ -183,11 +183,22 @@ class ParticipantService:
             if passcode is None or passcode.strip() != meeting.passcode:
                 raise InvalidPasscodeError()
 
-        # Prevent duplicate active sessions for registered users
-        if user is not None and await self._participant_repo.has_active_session(
-            str(meeting.id), str(user.id)
-        ):
-            raise ParticipantAlreadyActiveError()
+        # Deactivate any previous stale active participant with the same display_name or user_id
+        active_list = await self._participant_repo.list_active_by_meeting(str(meeting.id))
+        for ep in active_list:
+            if ep.is_host:
+                continue
+            is_same_user = user is not None and ep.user_id and str(ep.user_id) == str(user.id)
+            is_same_name = ep.display_name.strip().lower() == display_name.strip().lower()
+            if is_same_user or is_same_name:
+                ep.is_active = False
+                ep.left_at = utcnow()
+                await self._participant_repo.save(ep)
+                await connection_manager.disconnect(meeting.meeting_id, ep.participant_id)
+                await connection_manager.broadcast_to_meeting(
+                    meeting.meeting_id,
+                    make_participant_left(meeting.meeting_id, ep.participant_id, ep.display_name),
+                )
 
         now = utcnow()
         participant_id = generate_meeting_participant_id()

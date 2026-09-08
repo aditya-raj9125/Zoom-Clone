@@ -275,9 +275,15 @@ export class WebRTCManager {
   }
 
   private remoteStreams: Map<string, MediaStream> = new Map();
+  private iceCandidatesQueue: Map<string, RTCIceCandidateInit[]> = new Map();
 
   getRemoteStream(participantId: string): MediaStream | null {
     return this.remoteStreams.get(participantId) || null;
+  }
+
+  hasPeer(participantId: string): boolean {
+    const peer = this.peers.get(participantId);
+    return Boolean(peer && peer.connectionState !== "closed" && peer.connectionState !== "failed");
   }
 
   /**
@@ -296,6 +302,10 @@ export class WebRTCManager {
         type: "offer",
         sdp: payload.sdp as string,
       }));
+
+      // Drain any ICE candidates received before the remote description was set
+      await this.drainQueuedCandidates(senderId, peer);
+
       const answer = await peer.createAnswer();
       await peer.setLocalDescription(answer);
 
@@ -314,20 +324,43 @@ export class WebRTCManager {
           type: "answer",
           sdp: payload.sdp as string,
         }));
+        // Drain any ICE candidates received before answer was applied
+        await this.drainQueuedCandidates(senderId, peer);
       }
     } else if (event === "webrtc.ice_candidate") {
       const peer = this.peers.get(senderId);
-      if (peer && payload.candidate) {
-        try {
-          await peer.addIceCandidate(new RTCIceCandidate(payload.candidate as RTCIceCandidateInit));
-        } catch (err) {
-          console.warn("Error adding ICE candidate:", err);
+      const candidateInit = payload.candidate as RTCIceCandidateInit;
+      if (candidateInit) {
+        if (peer && peer.remoteDescription && peer.remoteDescription.type) {
+          try {
+            await peer.addIceCandidate(new RTCIceCandidate(candidateInit));
+          } catch (err) {
+            console.warn("Error adding ICE candidate:", err);
+          }
+        } else {
+          // Remote description not yet set — queue candidate for later
+          const q = this.iceCandidatesQueue.get(senderId) || [];
+          q.push(candidateInit);
+          this.iceCandidatesQueue.set(senderId, q);
         }
       }
     } else if (event === "participant.left" || event === "participant.removed") {
       this.closePeer(senderId);
       this.remoteStreams.delete(senderId);
+      this.iceCandidatesQueue.delete(senderId);
       this.onRemoteLeaveCallback?.(senderId);
+    }
+  }
+
+  private async drainQueuedCandidates(senderId: string, peer: RTCPeerConnection): Promise<void> {
+    const queued = this.iceCandidatesQueue.get(senderId) || [];
+    this.iceCandidatesQueue.delete(senderId);
+    for (const cand of queued) {
+      try {
+        await peer.addIceCandidate(new RTCIceCandidate(cand));
+      } catch (err) {
+        console.warn("Error adding queued ICE candidate:", err);
+      }
     }
   }
 
@@ -350,16 +383,45 @@ export class WebRTCManager {
   }
 
   private createPeerConnection(participantId: string): RTCPeerConnection {
+    // If an existing peer connection is present, close it first
+    const existing = this.peers.get(participantId);
+    if (existing) {
+      existing.close();
+    }
+
     const peer = new RTCPeerConnection({
       iceServers: [
         { urls: "stun:stun.l.google.com:19302" },
         { urls: "stun:stun1.l.google.com:19302" },
+        { urls: "stun:stun2.l.google.com:19302" },
+        { urls: "stun:stun.cloudflare.com:3478" },
+        { urls: "stun:global.stun.twilio.com:3478" },
       ],
     });
 
+    // Allocate transceivers so SDP negotiation always reserves audio and video channels
+    try {
+      peer.addTransceiver("audio", { direction: "sendrecv" });
+      peer.addTransceiver("video", { direction: "sendrecv" });
+    } catch {
+      // transceiver fallback
+    }
+
+    // Attach local media tracks to senders
     if (this.localStream) {
       this.localStream.getTracks().forEach((track) => {
-        peer.addTrack(track, this.localStream!);
+        const senders = peer.getSenders();
+        const existingSender = senders.find((s) => s.track?.kind === track.kind);
+        if (existingSender) {
+          existingSender.replaceTrack(track);
+        } else {
+          const matchingTransceiver = peer.getTransceivers().find((t) => t.receiver?.track?.kind === track.kind);
+          if (matchingTransceiver && matchingTransceiver.sender) {
+            matchingTransceiver.sender.replaceTrack(track);
+          } else {
+            peer.addTrack(track, this.localStream!);
+          }
+        }
       });
     }
 
@@ -375,15 +437,25 @@ export class WebRTCManager {
     };
 
     peer.ontrack = (e) => {
+      console.log(`[WebRTC] ontrack from ${participantId}: kind=${e.track.kind}, id=${e.track.id}`);
       let stream = this.remoteStreams.get(participantId);
       if (!stream) {
         stream = new MediaStream();
-        this.remoteStreams.set(participantId, stream);
+      }
+
+      // Replace any existing track of the same kind
+      const existingTrack = stream.getTracks().find((t) => t.kind === e.track.kind);
+      if (existingTrack) {
+        stream.removeTrack(existingTrack);
       }
       stream.addTrack(e.track);
 
+      // Re-create a fresh MediaStream instance so React components detect new object reference
+      const refreshedStream = new MediaStream(stream.getTracks());
+      this.remoteStreams.set(participantId, refreshedStream);
+
       if (this.onRemoteTrackCallback) {
-        this.onRemoteTrackCallback(participantId, e.track, stream);
+        this.onRemoteTrackCallback(participantId, e.track, refreshedStream);
       }
     };
 

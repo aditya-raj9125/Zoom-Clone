@@ -28,6 +28,7 @@ import logging
 
 from fastapi import APIRouter, Query, WebSocket, WebSocketDisconnect
 
+from app.common.utils import utcnow
 from app.core.database import AsyncSessionLocal
 from app.features.meetings.repository import MeetingRepository
 from app.features.participants.repository import ParticipantRepository
@@ -36,6 +37,7 @@ from app.features.realtime.events import (
     WSEventType,
     make_error,
     make_participant_joined,
+    make_participant_left,
 )
 from app.features.realtime.manager import connection_manager
 from app.features.realtime.schemas import InboundMessage
@@ -138,6 +140,25 @@ async def meeting_websocket(
             )
         finally:
             await connection_manager.disconnect(meeting_id, participant_id)
+            try:
+                async with AsyncSessionLocal() as db_cleanup:
+                    p_repo = ParticipantRepository(db_cleanup)
+                    part = await p_repo.get_active_by_participant_id(participant_id)
+                    if part:
+                        part.is_active = False
+                        part.left_at = utcnow()
+                        await p_repo.save(part)
+                        await db_cleanup.commit()
+                        await connection_manager.broadcast_to_meeting(
+                            meeting_id,
+                            make_participant_left(meeting_id, participant_id, part.display_name),
+                        )
+            except Exception as e:
+                logger.warning(
+                    "Error marking participant %s inactive on disconnect: %s",
+                    participant_id,
+                    e,
+                )
 
 
 async def _handle_inbound(raw: str, meeting_id: str, participant_id: str) -> None:

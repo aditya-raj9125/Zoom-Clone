@@ -229,9 +229,14 @@ export default function MeetingRoomPage() {
         showToast("You are host now.");
       }
 
-      // 2. Fetch existing participants
+      // 2. Fetch existing participants and filter out stale duplicate sessions of self
       const activeList = await api.getParticipants(meetingId);
-      setParticipants(activeList);
+      const cleanedList = activeList.filter(
+        (p) =>
+          p.participant_id === joinRes.participant_id ||
+          p.display_name.trim().toLowerCase() !== finalName.toLowerCase()
+      );
+      setParticipants(cleanedList);
 
       // 3. Fetch chat history
       try {
@@ -274,6 +279,21 @@ export default function MeetingRoomPage() {
 
       ws.onopen = () => {
         console.log("WebSocket connection established to", wsUrl);
+
+        // Initiate call to existing participants in the room if any
+        setTimeout(() => {
+          cleanedList.forEach((p) => {
+            if (
+              p.participant_id !== joinRes.participant_id &&
+              !rtc.hasPeer(p.participant_id)
+            ) {
+              console.log("Initiating WebRTC call to existing peer:", p.participant_id);
+              rtc.callParticipant(p.participant_id).catch((err) => {
+                console.warn("Call to existing participant failed:", err);
+              });
+            }
+          });
+        }, 800);
       };
 
       ws.onmessage = async (e) => {
@@ -289,9 +309,14 @@ export default function MeetingRoomPage() {
             // Don't add duplicate or self
             if (newPid !== joinRes.participant_id) {
               setParticipants((prev) => {
-                if (prev.some((p) => p.participant_id === newPid)) return prev;
+                // Filter out any stale duplicate with the same ID or name
+                const filtered = prev.filter(
+                  (p) =>
+                    p.participant_id !== newPid &&
+                    p.display_name.trim().toLowerCase() !== newName.trim().toLowerCase()
+                );
                 return [
-                  ...prev,
+                  ...filtered,
                   {
                     participant_id: newPid,
                     meeting_id: meetingId,
@@ -536,10 +561,43 @@ export default function MeetingRoomPage() {
     };
   }, []);
 
-  // Filter out self for remote participants
+  // Deduplicate participants for sidebar & counters
+  const uniqueParticipants = useMemo(() => {
+    const map = new Map<string, ParticipantResponse>();
+    const myNameNorm = myDisplayName.trim().toLowerCase();
+
+    for (const p of participants) {
+      if (
+        p.participant_id !== myParticipantId &&
+        myNameNorm &&
+        p.display_name.trim().toLowerCase() === myNameNorm
+      ) {
+        // Stale ghost session of myself before page refresh
+        continue;
+      }
+      map.set(p.participant_id, p);
+    }
+    return Array.from(map.values());
+  }, [participants, myParticipantId, myDisplayName]);
+
+  // Filter out self and duplicate stale sessions for remote participants
   const remoteParticipants = useMemo(() => {
-    return participants.filter((p) => p.participant_id !== myParticipantId);
-  }, [participants, myParticipantId]);
+    const seen = new Set<string>();
+    const result: ParticipantResponse[] = [];
+    const myNameNorm = myDisplayName.trim().toLowerCase();
+
+    for (const p of participants) {
+      if (p.participant_id === myParticipantId) continue;
+      if (myNameNorm && p.display_name.trim().toLowerCase() === myNameNorm) {
+        continue;
+      }
+      if (!seen.has(p.participant_id)) {
+        seen.add(p.participant_id);
+        result.push(p);
+      }
+    }
+    return result;
+  }, [participants, myParticipantId, myDisplayName]);
 
   // Active remote speaker for speaker view
   const activeRemoteSpeaker = remoteParticipants[0] || null;
@@ -609,7 +667,7 @@ export default function MeetingRoomPage() {
 
                 <div className="flex justify-between py-0.5">
                   <span className="text-slate-400">Participants Online</span>
-                  <span className="font-mono text-emerald-400 font-semibold">{participants.length}</span>
+                  <span className="font-mono text-emerald-400 font-semibold">{uniqueParticipants.length}</span>
                 </div>
               </div>
             </div>
@@ -918,7 +976,7 @@ export default function MeetingRoomPage() {
         {showParticipantsPanel && (
           <aside className="w-80 bg-[#1E2024] border-l border-white/10 flex flex-col shrink-0 z-30 animate-in slide-in-from-right duration-200 text-xs">
             <div className="h-11 px-4 border-b border-white/10 flex items-center justify-between font-bold text-slate-200">
-              <span>Participants ({participants.length})</span>
+              <span>Participants ({uniqueParticipants.length})</span>
               <button
                 onClick={() => setShowParticipantsPanel(false)}
                 className="p-1 rounded text-slate-400 hover:text-white transition-colors"
@@ -929,7 +987,7 @@ export default function MeetingRoomPage() {
 
             {/* Participants list */}
             <div className="flex-1 overflow-y-auto p-3 space-y-1">
-              {participants.map((p) => {
+              {uniqueParticipants.map((p) => {
                 const isMe = p.participant_id === myParticipantId;
                 const micActive = isMe ? audioEnabled : p.audio_enabled;
                 const camActive = isMe ? videoEnabled : p.video_enabled;
@@ -1134,7 +1192,7 @@ export default function MeetingRoomPage() {
             <div className="relative">
               <Users className="w-5 h-5 mb-0.5" />
               <span className="absolute -top-1 -right-2 text-[9px] font-bold bg-[#0B5CFF] text-white px-1 rounded-full">
-                {participants.length}
+                {uniqueParticipants.length}
               </span>
             </div>
             <span className="text-[10px] font-medium leading-none">Participants</span>

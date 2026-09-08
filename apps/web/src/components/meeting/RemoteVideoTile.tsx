@@ -20,19 +20,41 @@ export function RemoteVideoTile({
   isMainStage = false,
 }: RemoteVideoTileProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
+  const audioRef = useRef<HTMLAudioElement>(null);
 
+  // Check if stream has an active, live video track
+  const hasLiveVideoTrack = Boolean(
+    stream &&
+    stream.getVideoTracks().some((t) => t.readyState === "live" && t.enabled)
+  );
+
+  // Dedicated audio playback ensures remote audio is never blocked by video state
+  useEffect(() => {
+    if (audioRef.current) {
+      if (stream) {
+        audioRef.current.srcObject = stream;
+        audioRef.current.play().catch((err) => {
+          console.warn("[RemoteVideoTile] Audio autoplay blocked:", err);
+        });
+      } else {
+        audioRef.current.srcObject = null;
+      }
+    }
+  }, [stream]);
+
+  // Video element binding (muted so browser autoplay policies never block it)
   useEffect(() => {
     if (videoRef.current) {
-      if (stream) {
+      if (stream && (hasLiveVideoTrack || participant.video_enabled)) {
         videoRef.current.srcObject = stream;
-        videoRef.current.play().catch(() => {
-          // auto-play browser restriction fallback
+        videoRef.current.play().catch((err) => {
+          console.warn("[RemoteVideoTile] Video play error:", err);
         });
       } else {
         videoRef.current.srcObject = null;
       }
     }
-  }, [stream, participant.video_enabled]);
+  }, [stream, hasLiveVideoTrack, participant.video_enabled]);
 
   // Compute initials
   const initials = participant.display_name
@@ -43,7 +65,7 @@ export function RemoteVideoTile({
     .join("")
     .toUpperCase() || "U";
 
-  const hasVideoStream = Boolean(stream && participant.video_enabled);
+  const showVideo = Boolean(hasLiveVideoTrack && participant.video_enabled !== false);
 
   return (
     <div
@@ -51,18 +73,22 @@ export function RemoteVideoTile({
         isSpeaking ? "ring-2 ring-[#10B981]" : "border border-white/10"
       } ${className}`}
     >
-      {/* Video Element */}
+      {/* Hidden audio element ensuring remote audio plays even if video is off */}
+      <audio ref={audioRef} autoPlay playsInline />
+
+      {/* Video Element (muted so it only renders video and avoids browser autoplay blocks) */}
       <video
         ref={videoRef}
         autoPlay
         playsInline
+        muted
         className={`w-full h-full object-cover transition-opacity duration-300 ${
-          hasVideoStream ? "opacity-100 block" : "opacity-0 hidden"
+          showVideo ? "opacity-100 block" : "opacity-0 hidden"
         }`}
       />
 
       {/* Avatar Fallback (when video is turned off) */}
-      {!hasVideoStream && (
+      {!showVideo && (
         <div className="flex flex-col items-center justify-center gap-3">
           <div
             className={`rounded-full bg-[#24272C] border border-white/15 text-white font-bold flex items-center justify-center shadow-inner ${
