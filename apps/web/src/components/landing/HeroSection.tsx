@@ -6,33 +6,29 @@ import { ArrowRight } from "lucide-react";
 
 export function HeroSection() {
   return (
-    <section className="relative overflow-hidden bg-gradient-to-b from-[#0A2263] via-[#0E3494] to-[#1342B2] pt-16 pb-12 sm:pt-24 sm:pb-20 text-white text-center">
-      {/* Background ambient lighting effects */}
-      <div className="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[550px] bg-blue-500/18 rounded-full blur-3xl pointer-events-none" />
-      <div className="absolute top-1/3 left-1/4 w-[400px] h-[400px] bg-purple-500/10 rounded-full blur-3xl pointer-events-none" />
-
+    <section className="relative bg-transparent pt-4 pb-8 sm:pt-8 sm:pb-12 text-white text-center">
       <div className="relative mx-auto max-w-5xl px-4 sm:px-6 lg:px-8">
         {/* Main Headline */}
-        <h1 className="text-4xl sm:text-6xl lg:text-7xl font-bold tracking-tight text-white max-w-4xl mx-auto leading-[1.1]">
+        <h1 className="text-3xl sm:text-5xl lg:text-[54px] font-bold tracking-tight text-white max-w-3xl mx-auto leading-[1.15]">
           Find out what&apos;s possible when work connects
         </h1>
 
         {/* Subtitle */}
-        <p className="mt-6 text-lg sm:text-xl text-blue-100/90 max-w-2xl mx-auto font-normal leading-relaxed">
+        <p className="mt-5 text-base sm:text-lg text-blue-100/90 max-w-xl mx-auto font-normal leading-relaxed">
           Bridge the gap between talking and doing with the AI-first work platform built for you.
         </p>
 
         {/* Call to Actions */}
-        <div className="mt-10 flex flex-wrap items-center justify-center gap-4">
+        <div className="mt-9 flex flex-wrap items-center justify-center gap-3.5">
           <a
             href="#carousel"
-            className="inline-flex items-center justify-center rounded-full bg-[#061640] hover:bg-[#040F2E] text-white border border-white/25 px-8 py-3.5 text-sm sm:text-base font-semibold shadow-lg transition-all hover:scale-105 active:scale-95"
+            className="inline-flex items-center justify-center rounded-xl bg-[#00053D] hover:bg-[#000325] text-white border border-white/20 px-7 py-3 text-sm font-semibold shadow-lg transition-all hover:scale-105 active:scale-95"
           >
             Explore products
           </a>
           <Link
             href="/signup"
-            className="inline-flex items-center justify-center rounded-full bg-white hover:bg-slate-100 text-slate-900 px-8 py-3.5 text-sm sm:text-base font-semibold shadow-lg transition-all hover:scale-105 active:scale-95"
+            className="inline-flex items-center justify-center rounded-xl bg-white hover:bg-slate-100 text-[#00053D] px-7 py-3 text-sm font-semibold shadow-lg transition-all hover:scale-105 active:scale-95"
           >
             Find your plan
           </Link>

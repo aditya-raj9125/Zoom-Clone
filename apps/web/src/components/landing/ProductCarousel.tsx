@@ -10,9 +10,14 @@ interface ProductCard {
   imageSrc: string;
 }
 
+const SETS_COUNT = 5;
+const BASE_SET = 2; // middle set index (0, 1, 2, 3, 4)
+
 export function ProductCarousel() {
-  const [currentIndex, setCurrentIndex] = useState(2); // Start with Bonsai centered
+  const [currentIndex, setCurrentIndex] = useState(2); // Start with Bonsai
+  const [virtualIndex, setVirtualIndex] = useState(BASE_SET * 10 + 2); // 22 in virtual list
   const [isPaused, setIsPaused] = useState(false);
+  const [isAnimating, setIsAnimating] = useState(true);
 
   const products: ProductCard[] = [
     {
@@ -67,106 +72,164 @@ export function ProductCarousel() {
     },
   ];
 
+  // Flatten 5 sets of products for seamless infinite scrolling
+  const virtualProducts = React.useMemo(() => {
+    const list: Array<ProductCard & { virtualKey: string; originalIndex: number }> = [];
+    for (let set = 0; set < SETS_COUNT; set++) {
+      products.forEach((p, idx) => {
+        list.push({
+          ...p,
+          virtualKey: `${set}-${p.id}`,
+          originalIndex: idx,
+        });
+      });
+    }
+    return list;
+  }, [products]);
+
+  // Keep virtual index within healthy range without visible jump
+  useEffect(() => {
+    if (virtualIndex < 10 || virtualIndex >= 40) {
+      const normalized = ((virtualIndex % products.length) + products.length) % products.length;
+      const resetVirtual = BASE_SET * products.length + normalized;
+
+      setIsAnimating(false);
+      setVirtualIndex(resetVirtual);
+
+      const frame = requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          setIsAnimating(true);
+        });
+      });
+      return () => cancelAnimationFrame(frame);
+    }
+  }, [virtualIndex, products.length]);
+
   // Auto Horizontal Scrolling Effect
   useEffect(() => {
     if (isPaused) return;
 
     const interval = setInterval(() => {
-      setCurrentIndex((prev) => (prev + 1) % products.length);
-    }, 3500);
+      setVirtualIndex((prev) => {
+        const next = prev + 1;
+        setCurrentIndex(next % products.length);
+        return next;
+      });
+    }, 3800);
 
     return () => clearInterval(interval);
   }, [isPaused, products.length]);
 
   const handlePrev = () => {
-    setCurrentIndex((prev) => (prev > 0 ? prev - 1 : products.length - 1));
+    setVirtualIndex((prev) => {
+      const next = prev - 1;
+      setCurrentIndex(((next % products.length) + products.length) % products.length);
+      return next;
+    });
   };
 
   const handleNext = () => {
-    setCurrentIndex((prev) => (prev + 1) % products.length);
+    setVirtualIndex((prev) => {
+      const next = prev + 1;
+      setCurrentIndex(next % products.length);
+      return next;
+    });
+  };
+
+  const handleDotClick = (targetIdx: number) => {
+    let diff = (targetIdx - currentIndex) % products.length;
+    if (diff > products.length / 2) diff -= products.length;
+    if (diff < -products.length / 2) diff += products.length;
+
+    setVirtualIndex((prev) => prev + diff);
+    setCurrentIndex(targetIdx);
+  };
+
+  const handleCardClick = (vIdx: number, origIdx: number) => {
+    setVirtualIndex(vIdx);
+    setCurrentIndex(origIdx);
   };
 
   return (
     <section
       id="carousel"
-      className="relative -mt-10 sm:-mt-16 pb-16 z-20 overflow-hidden bg-gradient-to-b from-[#1342B2] via-[#1342B2]/15 to-transparent"
+      className="relative pt-2 pb-16 z-20 overflow-hidden bg-transparent select-none"
       onMouseEnter={() => setIsPaused(true)}
       onMouseLeave={() => setIsPaused(false)}
       onTouchStart={() => setIsPaused(true)}
       onTouchEnd={() => setIsPaused(false)}
     >
-      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-        {/* Carousel Viewport */}
-        <div className="relative overflow-visible py-6">
-          <div
-            className="flex gap-5 sm:gap-6 transition-transform duration-700 ease-out will-change-transform"
-            style={{
-              // Centers active card: card width is ~280px on mobile, ~310px on desktop, gap is 24px
-              transform: `translateX(calc(50% - ${currentIndex * 334 + 155}px))`,
-            }}
-          >
-            {products.map((item, idx) => {
-              const isActive = idx === currentIndex;
-              return (
-                <div
-                  key={item.id}
-                  onClick={() => setCurrentIndex(idx)}
-                  className={`relative h-[390px] sm:h-[440px] w-[270px] sm:w-[310px] shrink-0 rounded-3xl overflow-hidden cursor-pointer transition-all duration-500 shadow-xl ${
-                    isActive
-                      ? "ring-4 ring-blue-400/60 scale-105 shadow-2xl z-10"
-                      : "opacity-85 hover:opacity-100 hover:scale-100 scale-95"
-                  } bg-[#081E57]`}
-                >
-                  <Image
-                    src={item.imageSrc}
-                    alt={item.name}
-                    fill
-                    sizes="(max-width: 768px) 270px, 310px"
-                    className="object-cover object-top transition-transform duration-500 hover:scale-105"
-                    priority={idx < 4}
-                  />
-                </div>
-              );
-            })}
-          </div>
+      {/* Full-width Carousel Viewport allowing cards to bleed in & out of screen borders */}
+      <div className="w-full overflow-hidden py-4 [--card-step:250px] [--card-half:115px] sm:[--card-step:284px] sm:[--card-half:130px]">
+        <div
+          className={`flex gap-5 sm:gap-6 items-center will-change-transform ${
+            isAnimating ? "transition-transform duration-700 ease-out" : "transition-none"
+          }`}
+          style={{
+            transform: `translateX(calc(50% - (var(--card-step) * ${virtualIndex} + var(--card-half))))`,
+          }}
+        >
+          {virtualProducts.map((item, vIdx) => {
+            const isActive = vIdx === virtualIndex;
+            return (
+              <div
+                key={item.virtualKey}
+                onClick={() => handleCardClick(vIdx, item.originalIndex)}
+                className={`relative h-[330px] sm:h-[370px] w-[230px] sm:w-[260px] shrink-0 rounded-3xl overflow-hidden cursor-pointer transition-all duration-500 shadow-lg ${
+                  isActive
+                    ? "ring-4 ring-blue-400/70 scale-105 shadow-2xl z-10 opacity-100"
+                    : "opacity-80 hover:opacity-100 scale-95"
+                } bg-[#081E57]`}
+              >
+                <Image
+                  src={item.imageSrc}
+                  alt={item.name}
+                  fill
+                  sizes="(max-width: 640px) 230px, 260px"
+                  className="object-cover object-top transition-transform duration-500 hover:scale-105"
+                  priority={vIdx >= 20 && vIdx <= 25}
+                />
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Extreme Left & Right Navigation Controls with Centered Indicators */}
+      <div className="mt-8 w-full px-6 sm:px-12 lg:px-16 flex items-center justify-between">
+        {/* Left Arrow Button on Extreme Left */}
+        <button
+          onClick={handlePrev}
+          className="flex h-11 w-11 sm:h-12 sm:w-12 items-center justify-center rounded-full bg-white shadow-md text-slate-800 hover:bg-slate-100 hover:scale-110 active:scale-95 transition-all border border-slate-200 cursor-pointer z-30"
+          aria-label="Previous card"
+        >
+          <ChevronLeft className="h-5 w-5" />
+        </button>
+
+        {/* Pagination Indicators (Centered) */}
+        <div className="flex items-center gap-2">
+          {products.map((_, idx) => (
+            <button
+              key={idx}
+              onClick={() => handleDotClick(idx)}
+              className={`transition-all duration-300 rounded-full cursor-pointer ${
+                idx === currentIndex
+                  ? "h-2.5 w-7 bg-[#00052D]"
+                  : "h-2.5 w-2.5 bg-slate-300 hover:bg-slate-400"
+              }`}
+              aria-label={`Go to slide ${idx + 1}`}
+            />
+          ))}
         </div>
 
-        {/* Carousel Navigation Controls & Indicators */}
-        <div className="mt-8 flex items-center justify-between max-w-md mx-auto px-4">
-          {/* Left Arrow Button */}
-          <button
-            onClick={handlePrev}
-            className="flex h-11 w-11 items-center justify-center rounded-full bg-white shadow-md text-slate-800 hover:bg-slate-100 hover:scale-110 active:scale-95 transition-all border border-slate-200 cursor-pointer"
-            aria-label="Previous card"
-          >
-            <ChevronLeft className="h-5 w-5" />
-          </button>
-
-          {/* Pagination Indicators */}
-          <div className="flex items-center gap-2">
-            {products.map((_, idx) => (
-              <button
-                key={idx}
-                onClick={() => setCurrentIndex(idx)}
-                className={`transition-all duration-300 rounded-full cursor-pointer ${
-                  idx === currentIndex
-                    ? "h-2.5 w-7 bg-[#00052D]"
-                    : "h-2.5 w-2.5 bg-slate-300 hover:bg-slate-400"
-                }`}
-                aria-label={`Go to slide ${idx + 1}`}
-              />
-            ))}
-          </div>
-
-          {/* Right Arrow Button */}
-          <button
-            onClick={handleNext}
-            className="flex h-11 w-11 items-center justify-center rounded-full bg-white shadow-md text-slate-800 hover:bg-slate-100 hover:scale-110 active:scale-95 transition-all border border-slate-200 cursor-pointer"
-            aria-label="Next card"
-          >
-            <ChevronRight className="h-5 w-5" />
-          </button>
-        </div>
+        {/* Right Arrow Button on Extreme Right */}
+        <button
+          onClick={handleNext}
+          className="flex h-11 w-11 sm:h-12 sm:w-12 items-center justify-center rounded-full bg-white shadow-md text-slate-800 hover:bg-slate-100 hover:scale-110 active:scale-95 transition-all border border-slate-200 cursor-pointer z-30"
+          aria-label="Next card"
+        >
+          <ChevronRight className="h-5 w-5" />
+        </button>
       </div>
     </section>
   );

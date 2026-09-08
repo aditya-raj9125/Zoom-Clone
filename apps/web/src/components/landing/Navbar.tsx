@@ -53,8 +53,8 @@ export function Navbar() {
       <header
         className={`sticky top-0 z-50 w-full transition-all duration-300 ${
           isScrolled
-            ? "bg-white/95 backdrop-blur-md text-slate-800 shadow-xs border-b border-slate-100"
-            : "bg-[#0A2263] text-white"
+            ? "bg-[#040B2B]/95 backdrop-blur-md text-white shadow-md border-b border-white/10"
+            : "bg-transparent text-white"
         }`}
       >
         <div className="mx-auto flex max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8 h-18">
@@ -62,11 +62,7 @@ export function Navbar() {
           <div className="flex items-center gap-8">
             <Link href="/" className="flex items-center gap-1 group">
               <Image
-                src={
-                  isScrolled
-                    ? "/assets/branding/logo-zoom-blue@2x.png"
-                    : "/assets/branding/logo-zoom-white@2x.png"
-                }
+                src="/assets/branding/logo-zoom-white@2x.png"
                 alt="Zoom"
                 width={110}
                 height={25}
@@ -218,7 +214,7 @@ export function Navbar() {
               <Globe className="h-4 w-4" />
             </button>
 
-            {/* Meet Dropdown (Pill Button Matching Reference Mockup) */}
+            {/* Meet Dropdown (Button Matching Reference Mockup) */}
             <div className="relative" ref={meetRef}>
               <button
                 onClick={() => setMeetOpen(!meetOpen)}
@@ -227,7 +223,7 @@ export function Navbar() {
                     ? "bg-[#061744] text-white shadow-inner ring-1 ring-white/30"
                     : isScrolled
                     ? "bg-slate-100 hover:bg-slate-200 text-slate-800"
-                    : "bg-[#061744] hover:bg-[#041033] text-white border border-white/20"
+                    : "bg-[#07133C] hover:bg-[#050E30] text-white border border-white/20"
                 }`}
                 aria-expanded={meetOpen}
               >
@@ -267,52 +263,57 @@ export function Navbar() {
               )}
             </div>
 
-            <Link href="/signin" className="hover:opacity-80 transition-opacity">
-              Sign In
-            </Link>
-
             <a href="#support" className="hover:opacity-80 transition-opacity">
               Support
             </a>
 
-            {/* Contact Sales Button (White Pill in Hero) */}
+            {/* Contact Sales Button (Rounded rectangle matching reference) */}
             <a
               href="#contact-sales"
-              className={`rounded-full px-5 py-2 text-xs font-semibold shadow-xs transition-all ${
+              className={`rounded-xl px-4 sm:px-5 py-2 text-xs font-semibold shadow-xs transition-all ${
                 isScrolled
                   ? "bg-slate-100 hover:bg-slate-200 text-slate-900"
-                  : "bg-white hover:bg-slate-100 text-slate-900"
+                  : "bg-white hover:bg-slate-100 text-[#00053D]"
               }`}
             >
               Contact Sales
             </a>
 
-            {/* Sign Up Free Button (Vibrant Blue Pill) */}
-            <Link
-              href="/signup"
-              className="rounded-full bg-[#0B5CFF] hover:bg-[#004BDC] text-white px-5 py-2 text-xs font-semibold shadow-xs transition-all hover:scale-105 active:scale-95"
+            {/* What's New Button (Rounded rectangle matching reference) */}
+            <a
+              href="#whats-new"
+              className="rounded-xl bg-[#0B5CFF] hover:bg-[#004BDC] text-white px-4 sm:px-5 py-2 text-xs font-semibold shadow-xs transition-all hover:scale-105 active:scale-95"
             >
-              Sign Up Free
+              What&apos;s New
+            </a>
+
+            {/* User Avatar (AR badge matching reference mockup) */}
+            <Link
+              href="/signin"
+              className="h-8 w-8 rounded-full bg-[#0B5CFF] hover:bg-[#004BDC] text-white flex items-center justify-center font-bold text-xs shadow-xs transition-all select-none"
+              title="Profile / Sign In"
+            >
+              AR
             </Link>
 
-            <button className="p-2 hover:opacity-80 transition-opacity" aria-label="Apps">
+            <button className="p-2 hover:opacity-80 transition-opacity cursor-pointer" aria-label="Apps">
               <Grid className="h-4 w-4" />
             </button>
           </div>
 
           {/* Mobile Menu Button */}
-          <div className="md:hidden flex items-center gap-3">
+          <div className="md:hidden flex items-center gap-2.5">
             <Link
               href="/join"
-              className="rounded-full bg-white/20 text-white px-3 py-1.5 text-xs font-semibold"
+              className="rounded-xl bg-white/20 text-white px-3 py-1.5 text-xs font-semibold"
             >
               Join
             </Link>
             <Link
               href="/signup"
-              className="rounded-full bg-[#0B5CFF] text-white px-4 py-1.5 text-xs font-semibold"
+              className="rounded-xl bg-[#0B5CFF] text-white px-3.5 py-1.5 text-xs font-semibold"
             >
-              Sign Up Free
+              Sign Up
             </Link>
             <button
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
@@ -365,21 +366,21 @@ export function Navbar() {
                 <Link
                   href="/signin"
                   onClick={() => setMobileMenuOpen(false)}
-                  className="rounded-full border border-slate-300 py-2.5 text-center font-semibold text-sm hover:bg-slate-50"
+                  className="rounded-xl border border-slate-300 py-2.5 text-center font-semibold text-sm hover:bg-slate-50"
                 >
                   Sign In
                 </Link>
                 <a
                   href="#contact-sales"
                   onClick={() => setMobileMenuOpen(false)}
-                  className="rounded-full bg-slate-100 py-2.5 text-center font-semibold text-sm hover:bg-slate-200"
+                  className="rounded-xl bg-slate-100 py-2.5 text-center font-semibold text-sm hover:bg-slate-200"
                 >
                   Contact Sales
                 </a>
                 <Link
                   href="/signup"
                   onClick={() => setMobileMenuOpen(false)}
-                  className="rounded-full bg-[#0B5CFF] text-white py-2.5 text-center font-semibold text-sm shadow-xs"
+                  className="rounded-xl bg-[#0B5CFF] text-white py-2.5 text-center font-semibold text-sm shadow-xs"
                 >
                   Sign Up Free
                 </Link>

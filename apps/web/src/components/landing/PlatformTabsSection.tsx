@@ -2,56 +2,45 @@
 
 import React, { useState } from "react";
 import Image from "next/image";
-import { Sparkles, ArrowRight, MousePointer2 } from "lucide-react";
 
 interface TabData {
   id: string;
   label: string;
-  bullets: { title: string; desc: string }[];
-  ctaText: string;
-  pills: string[];
   imageSrc: string;
+  bullets: { title: string; desc: string }[];
 }
 
 export function PlatformTabsSection() {
-  const [activeTab, setActiveTab] = useState("support");
+  const [activeTab, setActiveTab] = useState("collab");
 
   const tabs: TabData[] = [
     {
       id: "collab",
       label: "Collaboration",
-      ctaText: "Explore collaboration",
-      imageSrc: "/images/landing/conference_room.jpg",
+      imageSrc: "/assets/landing/platform-tabs/collaboration.webp",
       bullets: [
         {
-          title: "All-in-one workspace",
-          desc: "Seamlessly transition between video meetings, team chat channels, and whiteboards.",
+          title: "Support hybrid and remote work",
+          desc: "Keep global teams engaged with reliable video, chat, documents, and more.",
         },
         {
-          title: "Continuous conversation",
-          desc: "Keep project momentum going with persistent group discussions before, during, and after meetings.",
+          title: "Seamless communication",
+          desc: "Save time and cut costs with Meetings, Phone, Chat, and more, in one UCaaS platform.",
         },
         {
-          title: "Intelligent summarization",
-          desc: "Catch up on missed discussions with AI-generated threads and action item assignments.",
+          title: "Keep workflows moving",
+          desc: "From brainstorms to documents, Zoom helps teams cut friction and avoid stalls.",
         },
         {
-          title: "Cross-functional hubs",
-          desc: "Centralize documentation, video recordings, and shared assets for entire departments.",
+          title: "Do more with AI",
+          desc: "Built-in AI summarizes meetings and automates next steps, while ZoomMate goes further and generates quality assets like decks and docs.",
         },
-      ],
-      pills: [
-        "✨ Smart meeting summary",
-        "✨ Action item extraction",
-        "✨ Chat channel sync",
-        "✨ Collaborative whiteboard",
       ],
     },
     {
       id: "support",
       label: "Customer support",
-      ctaText: "Explore customer support",
-      imageSrc: "/images/landing/call_center_agent.jpg",
+      imageSrc: "/assets/landing/platform-tabs/customer-support.jpg",
       bullets: [
         {
           title: "One platform, full context",
@@ -63,7 +52,7 @@ export function PlatformTabsSection() {
         },
         {
           title: "Better self-service",
-          desc: "Instant answers and proactive resolutions cut friction and drive customer loyalty.",
+          desc: "Instant answers and proactive resolutions cut friction and drive loyalty.",
         },
         {
           title: "AI-powered support",
@@ -74,114 +63,108 @@ export function PlatformTabsSection() {
           desc: "CRM integration, real-time analytics, and conversation insights surface trends and improve CX.",
         },
       ],
-      pills: [
-        "✨ Automatic Q&A",
-        "✨ Automatic call routing",
-        "✨ Meet with an agent",
-        "✨ Automatic appointment scheduling",
-      ],
     },
     {
       id: "marketing",
       label: "Marketing",
-      ctaText: "Explore marketing",
-      imageSrc: "/images/landing/webinar_speaker.jpg",
+      imageSrc: "/assets/landing/platform-tabs/marketing.jpg",
       bullets: [
         {
-          title: "Engage massive audiences",
-          desc: "Host interactive webinars and hybrid events with up to 250,000 attendees.",
+          title: "Keep audiences engaged",
+          desc: "Capture leads with branded webinars and events that build pipeline.",
         },
         {
-          title: "Brand customization",
-          desc: "Deliver memorable on-brand event stages, virtual reception spaces, and breakout sessions.",
+          title: "Deliver stand-out experiences",
+          desc: "Host polished, interactive events that reflect your brand.",
         },
         {
-          title: "Actionable lead data",
-          desc: "Connect audience engagement analytics directly with Marketo, HubSpot, and Salesforce.",
+          title: "Broader reach and richer insights",
+          desc: "Extend every event with virtual and hybrid options.",
         },
-      ],
-      pills: [
-        "✨ Event engagement metrics",
-        "✨ Live Q&A moderation",
-        "✨ Studio-grade broadcasts",
+        {
+          title: "Put busywork on auto-pilot with AI",
+          desc: "Automate content, personalize outreach, and analyze performance faster.",
+        },
       ],
     },
     {
       id: "sales",
       label: "Sales",
-      ctaText: "Explore sales",
-      imageSrc: "/images/landing/conference_room.jpg",
+      imageSrc: "/assets/landing/platform-tabs/sales.webp",
       bullets: [
         {
-          title: "Accelerate deal cycles",
-          desc: "Turn customer calls into closed revenue with real-time conversational intelligence.",
+          title: "Make selling easier",
+          desc: "Eliminate admin work so reps can focus on building relationships.",
         },
         {
-          title: "Automated CRM logging",
-          desc: "Sync call notes, sentiment signals, and next steps to Salesforce automatically.",
+          title: "Boost productivity and win rates",
+          desc: "Auto-summarized meetings, suggested follow-ups, and deal insights keep cycles short.",
         },
         {
-          title: "Rep coaching at scale",
-          desc: "Identify objection handling techniques and playbook adherence with AI scorecards.",
+          title: "Give RevOps deeper visibility",
+          desc: "See pipeline insights and competitor trends for confident forecasting.",
         },
-      ],
-      pills: [
-        "✨ Real-time deal signals",
-        "✨ Sentiment analysis",
-        "✨ Auto CRM syncing",
+        {
+          title: "Close with confidence",
+          desc: "Agentic AI flags risks, coaches reps, and automates next steps.",
+        },
       ],
     },
     {
       id: "engagement",
       label: "Employee engagement",
-      ctaText: "Explore employee engagement",
-      imageSrc: "/images/landing/call_center_agent.jpg",
+      imageSrc: "/assets/landing/platform-tabs/employee-engagement.jpg",
       bullets: [
         {
-          title: "Foster culture anywhere",
-          desc: "Keep distributed and hybrid teams connected with company-wide townhalls and video clips.",
+          title: "Foster community in hybrid teams",
+          desc: "Get company-wide updates, recognition, and social feeds that connect remote employees.",
         },
         {
-          title: "Personalized workspace",
-          desc: "Modern digital signage, flexible desk reservation, and interactive visitor kiosks.",
+          title: "Create immersive experiences",
+          desc: "Host interactive all-hands, learning sessions, and celebrations teams love.",
         },
         {
-          title: "Employee wellness",
-          desc: "AI insights highlight team burnout indicators and encourage healthy meeting schedules.",
+          title: "Communicate on your schedule",
+          desc: "Share video updates asynchronously — no extra meetings.",
         },
-      ],
-      pills: [
-        "✨ Hybrid desk reservation",
-        "✨ Company all-hands broadcast",
-        "✨ Digital signage",
+        {
+          title: "Reinforce culture and recognition",
+          desc: "Celebrate wins, milestones, and initiatives with rich media and live events.",
+        },
+        {
+          title: "Measure engagement to improve",
+          desc: "Track participation with analytics from Events, Clips, and Workvivo.",
+        },
       ],
     },
   ];
 
-  const currentTab = tabs.find((t) => t.id === activeTab) || tabs[1];
+  const currentTab = tabs.find((t) => t.id === activeTab) || tabs[0];
 
   return (
-    <section id="platform-tabs" className="py-20 bg-slate-50/50 border-t border-slate-100">
+    <section id="platform-tabs" className="py-20 bg-white">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-        {/* Title */}
-        <div className="text-center max-w-3xl mx-auto mb-12">
-          <h2 className="text-3xl sm:text-5xl font-extrabold text-[#020B27] tracking-tight">
-            One platform. Endless ways to work together.
+        {/* Section Header */}
+        <div className="text-center max-w-4xl mx-auto mb-12">
+          <h2 className="text-3xl sm:text-5xl font-extrabold text-[#020B27] tracking-tight leading-tight">
+            One platform.
+            <br />
+            Endless ways to work together.
           </h2>
         </div>
 
-        {/* Tab Buttons */}
-        <div className="flex flex-wrap items-center justify-center gap-2 mb-14">
+        {/* Tab Buttons with Rounded Rectangle Borders */}
+        <div className="flex flex-wrap items-center justify-center gap-2 sm:gap-4 mb-14">
           {tabs.map((tab) => {
             const isActive = tab.id === activeTab;
             return (
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id)}
-                className={`rounded-full px-5 py-2.5 text-sm font-semibold transition-all duration-200 cursor-pointer ${
+                className={`rounded-2xl px-5 sm:px-6 py-2.5 text-sm sm:text-base font-semibold transition-all duration-200 cursor-pointer ${
                   isActive
-                    ? "bg-white text-[#0B5CFF] shadow-sm border-2 border-[#0B5CFF]"
-                    : "text-slate-600 hover:text-slate-900 hover:bg-slate-200/60"
+                    ? "bg-white text-slate-900 border-2 border-[#0B5CFF] shadow-xs"
+                    : "text-slate-600 hover:text-slate-900 border-2 border-transparent hover:bg-slate-50"
                 }`}
               >
                 {tab.label}
@@ -191,13 +174,13 @@ export function PlatformTabsSection() {
         </div>
 
         {/* Tab Content Grid */}
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 items-center">
-          {/* Left Column: Bullet Highlights */}
-          <div className="lg:col-span-6 space-y-6">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 lg:gap-14 items-center">
+          {/* Left Column: Bullets and CTA */}
+          <div className="lg:col-span-6 space-y-8">
             <ul className="space-y-4">
               {currentTab.bullets.map((bullet, idx) => (
                 <li key={idx} className="flex items-start gap-3">
-                  <div className="h-2 w-2 rounded-full bg-[#0B5CFF] mt-2 shrink-0" />
+                  <span className="text-slate-900 font-extrabold text-base leading-relaxed">•</span>
                   <div className="text-sm sm:text-base leading-relaxed text-slate-700">
                     <strong className="text-slate-950 font-bold">{bullet.title}: </strong>
                     <span>{bullet.desc}</span>
@@ -206,65 +189,27 @@ export function PlatformTabsSection() {
               ))}
             </ul>
 
-            <div className="pt-4">
+            <div>
               <a
-                href="#contact-sales"
-                className="inline-flex items-center gap-2 rounded-full bg-[#0B5CFF] hover:bg-[#004BDE] text-white px-7 py-3 text-sm font-semibold shadow-md transition-all hover:scale-105 active:scale-95"
+                href="#products"
+                className="inline-flex items-center justify-center rounded-xl bg-[#0B5CFF] hover:bg-[#004BDC] text-white px-7 py-3 text-sm font-semibold shadow-md transition-all hover:scale-105 active:scale-95"
               >
-                <span>{currentTab.ctaText}</span>
-                <ArrowRight className="h-4 w-4" />
+                Explore products
               </a>
             </div>
           </div>
 
-          {/* Right Column: Interactive UI Visual with Floating Feature Pills */}
+          {/* Right Column: Visual Image showcase */}
           <div className="lg:col-span-6">
-            <div className="relative rounded-3xl overflow-hidden shadow-2xl bg-zinc-900 border border-slate-200 aspect-[4/3] flex items-center justify-center">
+            <div className="relative rounded-3xl overflow-hidden shadow-2xl border border-slate-200/80 aspect-[16/10] sm:aspect-[4/3] w-full bg-slate-100">
               <Image
                 src={currentTab.imageSrc}
                 alt={currentTab.label}
                 fill
                 sizes="(max-width: 1024px) 100vw, 50vw"
-                className="object-cover opacity-85"
+                className="object-cover"
+                priority
               />
-              <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/20 to-black/30" />
-
-              {/* Floating Feature Pills (matching image copy 10.png) */}
-              <div className="absolute top-6 left-6 z-20">
-                <span className="rounded-full bg-black/60 backdrop-blur-md px-3.5 py-1.5 text-xs font-semibold text-white border border-white/20 shadow-lg flex items-center gap-1.5">
-                  <Sparkles className="h-3 w-3 text-blue-300" />
-                  {currentTab.pills[0]}
-                </span>
-              </div>
-
-              {currentTab.pills[1] && (
-                <div className="absolute bottom-10 left-8 z-20">
-                  <span className="rounded-full bg-black/60 backdrop-blur-md px-3.5 py-1.5 text-xs font-semibold text-white border border-white/20 shadow-lg flex items-center gap-1.5">
-                    <Sparkles className="h-3 w-3 text-emerald-300" />
-                    {currentTab.pills[1]}
-                  </span>
-                </div>
-              )}
-
-              {/* Center Glowing CTA Pill with Cursor */}
-              {currentTab.pills[2] && (
-                <div className="absolute top-1/2 right-12 -translate-y-1/2 z-20 flex items-center gap-2">
-                  <div className="rounded-full bg-gradient-to-r from-blue-600 to-indigo-600 text-white px-5 py-2.5 text-xs sm:text-sm font-bold shadow-2xl border border-white/30 flex items-center gap-2 animate-pulse">
-                    <Sparkles className="h-4 w-4" />
-                    {currentTab.pills[2]}
-                  </div>
-                  <MousePointer2 className="h-5 w-5 text-white fill-black drop-shadow-md animate-bounce" />
-                </div>
-              )}
-
-              {currentTab.pills[3] && (
-                <div className="absolute bottom-4 right-6 z-20">
-                  <span className="rounded-full bg-black/60 backdrop-blur-md px-3 py-1 text-[11px] font-semibold text-white border border-white/15 shadow-lg flex items-center gap-1.5">
-                    <Sparkles className="h-3 w-3 text-purple-300" />
-                    {currentTab.pills[3]}
-                  </span>
-                </div>
-              )}
             </div>
           </div>
         </div>
