@@ -53,7 +53,7 @@ export function Navbar() {
         className={`sticky top-0 z-50 w-full transition-all duration-300 ${
           isScrolled
             ? "bg-white/95 backdrop-blur-md text-slate-800 shadow-xs border-b border-slate-100"
-            : "bg-[#0F3596] text-white"
+            : "bg-[#0A2263] text-white"
         }`}
       >
         <div className="mx-auto flex max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8 h-18">
@@ -221,10 +221,10 @@ export function Navbar() {
                 onClick={() => setMeetOpen(!meetOpen)}
                 className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-sm font-semibold transition-all cursor-pointer ${
                   meetOpen
-                    ? "bg-[#0A2266] text-white shadow-inner ring-1 ring-white/30"
+                    ? "bg-[#061744] text-white shadow-inner ring-1 ring-white/30"
                     : isScrolled
                     ? "bg-slate-100 hover:bg-slate-200 text-slate-800"
-                    : "bg-[#092266] hover:bg-[#071B52] text-white border border-white/20"
+                    : "bg-[#061744] hover:bg-[#041033] text-white border border-white/20"
                 }`}
                 aria-expanded={meetOpen}
               >

@@ -6,10 +6,10 @@ import { ArrowRight } from "lucide-react";
 
 export function HeroSection() {
   return (
-    <section className="relative overflow-hidden bg-gradient-to-b from-[#0F3596] via-[#1546BE] to-[#1D5CE5] pt-16 pb-12 sm:pt-24 sm:pb-20 text-white text-center">
+    <section className="relative overflow-hidden bg-gradient-to-b from-[#0A2263] via-[#0E3494] to-[#1342B2] pt-16 pb-12 sm:pt-24 sm:pb-20 text-white text-center">
       {/* Background ambient lighting effects */}
-      <div className="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[550px] bg-blue-400/25 rounded-full blur-3xl pointer-events-none" />
-      <div className="absolute top-1/3 left-1/4 w-[400px] h-[400px] bg-purple-400/15 rounded-full blur-3xl pointer-events-none" />
+      <div className="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[550px] bg-blue-500/18 rounded-full blur-3xl pointer-events-none" />
+      <div className="absolute top-1/3 left-1/4 w-[400px] h-[400px] bg-purple-500/10 rounded-full blur-3xl pointer-events-none" />
 
       <div className="relative mx-auto max-w-5xl px-4 sm:px-6 lg:px-8">
         {/* Main Headline */}
@@ -26,7 +26,7 @@ export function HeroSection() {
         <div className="mt-10 flex flex-wrap items-center justify-center gap-4">
           <a
             href="#carousel"
-            className="inline-flex items-center justify-center rounded-full bg-[#0A2266] hover:bg-[#081B52] text-white border border-white/25 px-8 py-3.5 text-sm sm:text-base font-semibold shadow-lg transition-all hover:scale-105 active:scale-95"
+            className="inline-flex items-center justify-center rounded-full bg-[#061640] hover:bg-[#040F2E] text-white border border-white/25 px-8 py-3.5 text-sm sm:text-base font-semibold shadow-lg transition-all hover:scale-105 active:scale-95"
           >
             Explore products
           </a>

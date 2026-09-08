@@ -89,7 +89,7 @@ export function ProductCarousel() {
   return (
     <section
       id="carousel"
-      className="relative -mt-10 sm:-mt-16 pb-16 z-20 overflow-hidden bg-gradient-to-b from-[#1D5CE5] via-[#2563EB]/20 to-transparent"
+      className="relative -mt-10 sm:-mt-16 pb-16 z-20 overflow-hidden bg-gradient-to-b from-[#1342B2] via-[#1342B2]/15 to-transparent"
       onMouseEnter={() => setIsPaused(true)}
       onMouseLeave={() => setIsPaused(false)}
       onTouchStart={() => setIsPaused(true)}
@@ -115,7 +115,7 @@ export function ProductCarousel() {
                     isActive
                       ? "ring-4 ring-blue-400/60 scale-105 shadow-2xl z-10"
                       : "opacity-85 hover:opacity-100 hover:scale-100 scale-95"
-                  } bg-[#0B256B]`}
+                  } bg-[#081E57]`}
                 >
                   <Image
                     src={item.imageSrc}
