@@ -139,12 +139,15 @@ async def meeting_websocket(
                 exc,
             )
         finally:
-            await connection_manager.disconnect(meeting_id, participant_id)
+            await connection_manager.disconnect(meeting_id, participant_id, websocket)
             try:
                 async with AsyncSessionLocal() as db_cleanup:
                     p_repo = ParticipantRepository(db_cleanup)
                     part = await p_repo.get_active_by_participant_id(participant_id)
-                    if part:
+                    # Only the current socket may end the participant session.
+                    # A stale socket from before a refresh must not deactivate
+                    # the newly reconnected participant.
+                    if part and not connection_manager.is_connected(meeting_id, participant_id):
                         part.is_active = False
                         part.left_at = utcnow()
                         await p_repo.save(part)

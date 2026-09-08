@@ -57,6 +57,7 @@ async def join_by_meeting_id(
         meeting_id=request.meeting_id,
         display_name=request.display_name,
         passcode=request.passcode,
+        participant_id=request.participant_id,
         user=current_user,
     )
 
@@ -81,6 +82,7 @@ async def join_by_invite(
     return await service.join_by_invite_token(
         invite_token=request.invite_token,
         display_name=request.display_name,
+        participant_id=request.participant_id,
         user=current_user,
     )
 

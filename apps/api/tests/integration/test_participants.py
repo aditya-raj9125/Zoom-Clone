@@ -78,6 +78,69 @@ class TestJoinByMeetingId:
         )
         assert response.status_code == 422
 
+    async def test_same_display_name_creates_a_distinct_guest_session(
+        self, client: AsyncClient, default_user, live_meeting
+    ):
+        """Display names are labels, never participant identity keys."""
+        first = await client.post(
+            "/api/v1/meetings/join",
+            json={
+                "meeting_id": live_meeting.meeting_id,
+                "display_name": "Aditya Raj",
+                "passcode": "test12",
+            },
+        )
+        second = await client.post(
+            "/api/v1/meetings/join",
+            json={
+                "meeting_id": live_meeting.meeting_id,
+                "display_name": "Aditya Raj",
+                "passcode": "test12",
+            },
+        )
+
+        assert first.status_code == second.status_code == 200
+        assert first.json()["is_host"] is False
+        assert second.json()["is_host"] is False
+        assert first.json()["participant_id"] != second.json()["participant_id"]
+
+        participants = await client.get(
+            f"/api/v1/meetings/{live_meeting.meeting_id}/participants"
+        )
+        assert len(participants.json()) == 3  # host + both guests
+
+    async def test_explicit_session_id_reconnects_without_creating_duplicate(
+        self, client: AsyncClient, default_user, live_meeting
+    ):
+        initial = await client.post(
+            "/api/v1/meetings/join",
+            json={
+                "meeting_id": live_meeting.meeting_id,
+                "display_name": "Reconnect User",
+                "passcode": "test12",
+            },
+        )
+        participant_id = initial.json()["participant_id"]
+
+        reconnect = await client.post(
+            "/api/v1/meetings/join",
+            json={
+                "meeting_id": live_meeting.meeting_id,
+                "display_name": "Reconnect User Renamed",
+                "passcode": "test12",
+                "participant_id": participant_id,
+            },
+        )
+
+        assert reconnect.status_code == 200
+        assert reconnect.json()["participant_id"] == participant_id
+        assert reconnect.json()["display_name"] == "Reconnect User Renamed"
+
+        participants = await client.get(
+            f"/api/v1/meetings/{live_meeting.meeting_id}/participants"
+        )
+        assert len(participants.json()) == 2
+
 
 @pytest.mark.asyncio
 class TestJoinByInvite:
@@ -92,6 +155,50 @@ class TestJoinByInvite:
         assert response.status_code == 200
         data = response.json()
         assert data["display_name"] == "Invite User"
+
+    async def test_shared_invite_cannot_take_over_host_session(
+        self, client: AsyncClient, default_user, live_meeting
+    ):
+        response = await client.post(
+            "/api/v1/meetings/join-by-invite",
+            json={
+                "invite_token": live_meeting.invite_token,
+                "display_name": "Aditya Raj",  # same label as host
+            },
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["is_host"] is False
+        assert data["participant_id"] != live_meeting._test_host_participant_id
+
+        participants = await client.get(
+            f"/api/v1/meetings/{live_meeting.meeting_id}/participants"
+        )
+        assert len(participants.json()) == 2
+
+    async def test_authenticated_host_opening_invite_gets_new_guest_session(
+        self, client: AsyncClient, default_user, live_meeting
+    ):
+        from app.features.auth.jwt import create_access_token
+
+        token = create_access_token(
+            user_id=default_user.id,
+            email=default_user.email,
+            display_name=default_user.display_name,
+        )
+        response = await client.post(
+            "/api/v1/meetings/join-by-invite",
+            headers={"Authorization": f"Bearer {token}"},
+            json={
+                "invite_token": live_meeting.invite_token,
+                "display_name": "Host's second tab",
+            },
+        )
+
+        assert response.status_code == 200
+        assert response.json()["is_host"] is False
+        assert response.json()["participant_id"] != live_meeting._test_host_participant_id
 
     async def test_invalid_invite_token(self, client: AsyncClient):
         response = await client.post(
@@ -196,6 +303,33 @@ class TestHostControls:
         )
         # host_id belongs to live_meeting, not scheduled_meeting
         assert response.status_code in (403, 404)
+
+    async def test_audio_and_video_changes_are_persisted_per_participant(
+        self, client: AsyncClient, default_user, live_meeting
+    ):
+        participant_id = await self._join_participant(client, live_meeting, "Media User")
+
+        audio = await client.patch(
+            f"/api/v1/meetings/{live_meeting.meeting_id}/participants/{participant_id}/audio",
+            params={"actor_participant_id": participant_id},
+            json={"enabled": False},
+        )
+        video = await client.patch(
+            f"/api/v1/meetings/{live_meeting.meeting_id}/participants/{participant_id}/video",
+            params={"actor_participant_id": participant_id},
+            json={"enabled": False},
+        )
+
+        assert audio.status_code == video.status_code == 200
+        assert audio.json()["audio_enabled"] is False
+        assert video.json()["video_enabled"] is False
+
+        listed = await client.get(
+            f"/api/v1/meetings/{live_meeting.meeting_id}/participants"
+        )
+        media_user = next(p for p in listed.json() if p["participant_id"] == participant_id)
+        assert media_user["audio_enabled"] is False
+        assert media_user["video_enabled"] is False
 
 
 @pytest.mark.asyncio

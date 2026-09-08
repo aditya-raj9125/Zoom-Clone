@@ -141,11 +141,13 @@ export interface MeetingJoinRequest {
   meeting_id: string;
   display_name: string;
   passcode?: string;
+  participant_id?: string;
 }
 
 export interface JoinByInviteRequest {
   invite_token: string;
   display_name: string;
+  participant_id?: string;
 }
 
 export interface JoinMeetingResponse {

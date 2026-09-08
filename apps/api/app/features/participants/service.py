@@ -12,7 +12,6 @@ from app.core.config import get_settings
 from app.core.exceptions import (
     CrossMeetingAccessError,
     MeetingNotFoundError,
-    ParticipantAlreadyActiveError,
     ParticipantNotFoundError,
     UnauthorizedHostActionError,
 )
@@ -100,12 +99,19 @@ class ParticipantService:
         meeting_id: str,
         display_name: str,
         passcode: str | None,
+        participant_id: str | None = None,
         user: User | None = None,
     ) -> JoinMeetingResponse:
         meeting = await self._meeting_repo.get_by_meeting_id(meeting_id)
         if meeting is None:
             raise MeetingNotFoundError()
-        return await self._do_join(meeting, display_name, passcode, user)
+        return await self._do_join(
+            meeting,
+            display_name,
+            passcode,
+            user,
+            participant_id=participant_id,
+        )
 
     # ---------------------------------------------------------------------------
     # Join by invite token
@@ -115,6 +121,7 @@ class ParticipantService:
         self,
         invite_token: str,
         display_name: str,
+        participant_id: str | None = None,
         user: User | None = None,
     ) -> JoinMeetingResponse:
         from app.core.exceptions import InvalidInviteTokenError
@@ -124,7 +131,15 @@ class ParticipantService:
             raise InvalidInviteTokenError()
         # Invite links don't require a passcode (the token IS the credential)
         return await self._do_join(
-            meeting, display_name, passcode=None, user=user, skip_passcode=True
+            meeting,
+            display_name,
+            passcode=None,
+            # An invite is an explicit new participant flow. An authenticated
+            # host opening their own invite in another tab must not reclaim the
+            # host session; only an explicit participant_id may reconnect one.
+            user=user if participant_id else None,
+            participant_id=participant_id,
+            skip_passcode=True,
         )
 
     # ---------------------------------------------------------------------------
@@ -137,6 +152,7 @@ class ParticipantService:
         display_name: str,
         passcode: str | None,
         user: User | None,
+        participant_id: str | None = None,
         skip_passcode: bool = False,
     ) -> JoinMeetingResponse:
         from app.core.exceptions import MeetingNotJoinableError
@@ -147,7 +163,40 @@ class ParticipantService:
                 f"Meeting cannot be joined in status '{meeting.status.value}'."
             )
 
-        # Check if this is the host connecting or rejoining their pre-created session
+        # Reconnect the exact browser session when the client has a cached opaque ID.
+        # This is intentionally ID-based: display names are not unique identities.
+        if participant_id:
+            existing_session = await self._participant_repo.get_by_participant_id(participant_id)
+            if existing_session and str(existing_session.meeting_id) == str(meeting.id):
+                if existing_session.removed_from_meeting:
+                    raise MeetingNotJoinableError("This participant was removed from the meeting.")
+                if user and existing_session.user_id and str(existing_session.user_id) != str(user.id):
+                    raise ParticipantNotFoundError("Participant session belongs to another user.")
+
+                existing_session.display_name = display_name.strip()
+                existing_session.is_active = True
+                existing_session.left_at = None
+                await self._participant_repo.save(existing_session)
+                await self._db.commit()
+                meeting_response = self._meeting_service._build_meeting_response(
+                    meeting,
+                    host_participant_id=(
+                        existing_session.participant_id if existing_session.is_host else None
+                    ),
+                )
+                return JoinMeetingResponse(
+                    participant_id=existing_session.participant_id,
+                    meeting_id=meeting.meeting_id,
+                    display_name=existing_session.display_name,
+                    role=existing_session.role,
+                    is_host=existing_session.is_host,
+                    audio_enabled=existing_session.audio_enabled,
+                    video_enabled=existing_session.video_enabled,
+                    meeting=meeting_response,
+                    websocket_url=self._get_ws_url(meeting.meeting_id, existing_session.participant_id),
+                )
+
+        # Check if this is the authenticated host reconnecting without a cached session.
         existing_host = await self._participant_repo.get_host_by_meeting(str(meeting.id))
         is_creator = user is not None and str(meeting.host_user_id) == str(user.id)
 
@@ -159,10 +208,7 @@ class ParticipantService:
                     or is_creator
                 )
             )
-            is_same_name = (
-                display_name.strip().lower() == existing_host.display_name.strip().lower()
-            )
-            if is_same_user or is_same_name or is_creator:
+            if is_same_user or is_creator:
                 if display_name.strip():
                     existing_host.display_name = display_name.strip()
                 elif user and user.display_name:
@@ -194,14 +240,14 @@ class ParticipantService:
             if passcode is None or passcode.strip() != meeting.passcode:
                 raise InvalidPasscodeError()
 
-        # Deactivate any previous stale active participant with the same display_name or user_id
+        # Deactivate only a previous session owned by the same authenticated user.
+        # Multiple guests may legitimately use the same display name.
         active_list = await self._participant_repo.list_active_by_meeting(str(meeting.id))
         for ep in active_list:
             if ep.is_host:
                 continue
             is_same_user = user is not None and ep.user_id and str(ep.user_id) == str(user.id)
-            is_same_name = ep.display_name.strip().lower() == display_name.strip().lower()
-            if is_same_user or is_same_name:
+            if is_same_user:
                 ep.is_active = False
                 ep.left_at = utcnow()
                 await self._participant_repo.save(ep)

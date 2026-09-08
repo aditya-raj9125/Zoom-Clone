@@ -23,27 +23,9 @@ export default function JoinByInvitePage() {
       return;
     }
 
-    // Check if user is already authenticated or has stored name
-    api.getCurrentUser()
-      .then((user) => {
-        if (user?.display_name) {
-          joinWithDisplayName(user.display_name);
-        } else {
-          checkSessionStorage();
-        }
-      })
-      .catch(() => {
-        checkSessionStorage();
-      });
-
-    function checkSessionStorage() {
-      const stored = sessionStorage.getItem("zoom_join_name");
-      if (stored) {
-        joinWithDisplayName(stored);
-      } else {
-        setHasPromptedName(true);
-      }
-    }
+    // An invite always starts a new participant session. Never auto-join from
+    // the host's authenticated profile or stored host name.
+    setHasPromptedName(true);
   }, [inviteToken]);
 
   const joinWithDisplayName = async (name: string) => {
@@ -61,11 +43,6 @@ export default function JoinByInvitePage() {
       sessionStorage.setItem(`zoom_session_${res.meeting_id}`, JSON.stringify(res));
       router.replace(`/meetings/${res.meeting_id}`);
     } catch (err: unknown) {
-      if (inviteToken.startsWith("tok_")) {
-        const extractedId = inviteToken.replace("tok_", "");
-        router.replace(`/meetings/${extractedId}`);
-        return;
-      }
       setError(err instanceof Error ? err.message : "Failed to join meeting by invite.");
       setIsLoading(false);
       setHasPromptedName(true);

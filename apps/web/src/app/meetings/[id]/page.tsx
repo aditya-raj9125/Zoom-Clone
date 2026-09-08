@@ -166,17 +166,6 @@ export default function MeetingRoomPage() {
         }
 
         if (!candidateName) {
-          try {
-            const currentUser = await api.getCurrentUser();
-            if (currentUser?.display_name) {
-              candidateName = currentUser.display_name;
-            }
-          } catch {
-            // not logged in
-          }
-        }
-
-        if (!candidateName) {
           setIsJoining(false);
           setShowNamePrompt(true);
           return;
@@ -218,11 +207,23 @@ export default function MeetingRoomPage() {
       }
 
       // Call Join Endpoint to get participant_id and WebSocket URL
+      let cachedParticipantId: string | undefined;
+      try {
+        const cached = JSON.parse(
+          sessionStorage.getItem(`zoom_session_${meetingId}`) || "null"
+        ) as { participant_id?: string } | null;
+        cachedParticipantId = cached?.participant_id;
+      } catch {
+        cachedParticipantId = undefined;
+      }
+
       const joinRes = await api.joinMeeting({
         meeting_id: meetingId,
         display_name: finalName,
         passcode: currentMeeting?.passcode,
+        participant_id: cachedParticipantId,
       });
+      sessionStorage.setItem(`zoom_session_${meetingId}`, JSON.stringify(joinRes));
 
       setMyParticipantId(joinRes.participant_id);
       setIsHost(joinRes.is_host);
@@ -233,12 +234,7 @@ export default function MeetingRoomPage() {
 
       // 2. Fetch existing participants and filter out stale duplicate sessions of self
       const activeList = await api.getParticipants(meetingId);
-      const cleanedList = activeList.filter(
-        (p) =>
-          p.participant_id === joinRes.participant_id ||
-          p.display_name.trim().toLowerCase() !== finalName.toLowerCase()
-      );
-      setParticipants(cleanedList);
+      setParticipants(activeList);
 
       // 3. Fetch chat history
       try {
@@ -297,7 +293,7 @@ export default function MeetingRoomPage() {
 
         // Exactly one side initiates each pair. This prevents simultaneous
         // offers when both peers connect at nearly the same time.
-        cleanedList.forEach((p) => {
+        activeList.forEach((p) => {
           if (
             p.participant_id !== joinRes.participant_id &&
             joinRes.participant_id.localeCompare(p.participant_id) < 0 &&
@@ -324,12 +320,9 @@ export default function MeetingRoomPage() {
             // Don't add duplicate or self
             if (newPid !== joinRes.participant_id) {
               setParticipants((prev) => {
-                // Filter out any stale duplicate with the same ID or name
-                const filtered = prev.filter(
-                  (p) =>
-                    p.participant_id !== newPid &&
-                    p.display_name.trim().toLowerCase() !== newName.trim().toLowerCase()
-                );
+                // Participant IDs are the identity; names are display labels
+                // and are allowed to repeat.
+                const filtered = prev.filter((p) => p.participant_id !== newPid);
                 return [
                   ...filtered,
                   {
@@ -580,57 +573,30 @@ export default function MeetingRoomPage() {
     };
   }, []);
 
-  // Deduplicate participants for sidebar & counters
+  // Deduplicate by opaque participant ID only. Display names are not unique.
   const uniqueParticipants = useMemo(() => {
     const map = new Map<string, ParticipantResponse>();
-    const myNameNorm = myDisplayName.trim().toLowerCase();
 
     for (const p of participants) {
-      if (
-        p.participant_id !== myParticipantId &&
-        myNameNorm &&
-        p.display_name.trim().toLowerCase() === myNameNorm
-      ) {
-        // Stale ghost session of myself before page refresh
-        continue;
-      }
-      if (p.participant_id !== myParticipantId && isHost && p.is_host) {
-        // Stale host session of current host
-        continue;
-      }
-      if (p.participant_id !== myParticipantId && p.display_name.trim().toLowerCase() === "demo user") {
-        // Stale ghost demo user session
-        continue;
-      }
       map.set(p.participant_id, p);
     }
     return Array.from(map.values());
-  }, [participants, myParticipantId, myDisplayName, isHost]);
+  }, [participants]);
 
-  // Filter out self and duplicate stale sessions for remote participants
+  // Filter out self and deduplicate by participant ID for remote participants.
   const remoteParticipants = useMemo(() => {
     const seen = new Set<string>();
     const result: ParticipantResponse[] = [];
-    const myNameNorm = myDisplayName.trim().toLowerCase();
 
     for (const p of participants) {
       if (p.participant_id === myParticipantId) continue;
-      if (myNameNorm && p.display_name.trim().toLowerCase() === myNameNorm) {
-        continue;
-      }
-      if (isHost && p.is_host) {
-        continue;
-      }
-      if (p.display_name.trim().toLowerCase() === "demo user") {
-        continue;
-      }
       if (!seen.has(p.participant_id)) {
         seen.add(p.participant_id);
         result.push(p);
       }
     }
     return result;
-  }, [participants, myParticipantId, myDisplayName, isHost]);
+  }, [participants, myParticipantId]);
 
   // Active remote speaker for speaker view
   const activeRemoteSpeaker = remoteParticipants[0] || null;

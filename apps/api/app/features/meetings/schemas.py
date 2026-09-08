@@ -83,6 +83,10 @@ class MeetingJoinRequest(BaseModel):
         description="Name shown in the Participants panel",
     )
     passcode: str | None = Field(None, description="Meeting passcode if required")
+    participant_id: str | None = Field(
+        None,
+        description="Existing opaque participant session ID used only when reconnecting",
+    )
 
     @field_validator("display_name")
     @classmethod
@@ -106,6 +110,10 @@ class JoinByInviteRequest(BaseModel):
 
     invite_token: str = Field(..., min_length=10, description="Opaque invite token from the link")
     display_name: str = Field(..., min_length=1, max_length=100)
+    participant_id: str | None = Field(
+        None,
+        description="Existing opaque participant session ID used only when reconnecting",
+    )
 
     @field_validator("display_name")
     @classmethod

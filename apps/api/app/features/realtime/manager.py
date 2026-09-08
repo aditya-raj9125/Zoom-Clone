@@ -58,6 +58,13 @@ class ConnectionManager:
     ) -> None:
         """Accept the WebSocket and register the connection."""
         await websocket.accept()
+        previous = self._connections[meeting_id].get(participant_id)
+        if previous and previous is not websocket:
+            # A browser refresh can reconnect before the old socket finishes
+            # closing. Close the old transport, but let its finally block
+            # observe that it no longer owns the registry entry.
+            with contextlib.suppress(Exception):
+                await previous.close()
         self._connections[meeting_id][participant_id] = websocket
 
         pending = self._pending_signaling.pop((meeting_id, participant_id), [])
@@ -79,8 +86,18 @@ class ConnectionManager:
             participant_id,
         )
 
-    async def disconnect(self, meeting_id: str, participant_id: str) -> None:
+    async def disconnect(
+        self,
+        meeting_id: str,
+        participant_id: str,
+        websocket: WebSocket | None = None,
+    ) -> None:
         """Remove the connection from the registry and close the socket gracefully."""
+        current = self._connections.get(meeting_id, {}).get(participant_id)
+        if websocket is not None and current is not websocket:
+            # A stale socket must never remove or invalidate a newer socket
+            # that reused the same participant session ID.
+            return
         ws = self._connections.get(meeting_id, {}).pop(participant_id, None)
         self._pending_signaling.pop((meeting_id, participant_id), None)
         if ws and ws.client_state == WebSocketState.CONNECTED:
