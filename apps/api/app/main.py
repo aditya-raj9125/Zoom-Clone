@@ -54,6 +54,17 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         if db_path and db_path != ":memory:":
             Path(db_path).parent.mkdir(parents=True, exist_ok=True)
 
+    # Automatically ensure seed data exists on startup (idempotent)
+    try:
+        from app.core.database import AsyncSessionLocal
+        from app.db.seed import seed_database
+
+        async with AsyncSessionLocal() as db:
+            await seed_database(db)
+        logger.info("Database seed verified on startup.")
+    except Exception as exc:
+        logger.warning("Database seed skipped during startup: %s", exc)
+
     yield
 
     # Shutdown

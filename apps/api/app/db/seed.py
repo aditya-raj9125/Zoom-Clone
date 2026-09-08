@@ -29,6 +29,7 @@ from app.common.enums import (
 )
 from app.common.utils import utcnow
 from app.core.constants import DEFAULT_USER_DISPLAY_NAME, DEFAULT_USER_EMAIL
+from app.features.auth.password import hash_password
 from app.features.chat.models import ChatMessage
 from app.features.meetings.generator import (
     generate_meeting_invite_token,
@@ -48,8 +49,11 @@ async def seed_database(db: AsyncSession) -> None:
     logger.info("Starting database seed...")
 
     # -----------------------------------------------------------------------
-    # 1. Default user
+    # 1. Users (Default user, Test/Demo user, Aditya Raj user)
     # -----------------------------------------------------------------------
+    default_password_hash = hash_password("password123")
+
+    # 1a. Default user
     result = await db.execute(select(User).where(User.is_default_user == True))  # noqa: E712
     default_user = result.scalar_one_or_none()
 
@@ -58,13 +62,55 @@ async def seed_database(db: AsyncSession) -> None:
             id=str(uuid.uuid4()),
             display_name=DEFAULT_USER_DISPLAY_NAME,
             email=DEFAULT_USER_EMAIL,
+            password_hash=default_password_hash,
             is_default_user=True,
         )
         db.add(default_user)
         await db.flush()
         logger.info("Created default user: %s", DEFAULT_USER_DISPLAY_NAME)
     else:
+        if not default_user.password_hash:
+            default_user.password_hash = default_password_hash
+            await db.flush()
         logger.info("Default user already exists — skipping")
+
+    # 1b. Sample demo account: testuser@example.com (password: password123)
+    result = await db.execute(select(User).where(User.email == "testuser@example.com"))
+    test_user = result.scalar_one_or_none()
+    if test_user is None:
+        test_user = User(
+            id=str(uuid.uuid4()),
+            display_name="Demo User",
+            email="testuser@example.com",
+            password_hash=default_password_hash,
+            is_default_user=False,
+        )
+        db.add(test_user)
+        await db.flush()
+        logger.info("Created demo user: testuser@example.com")
+    else:
+        if not test_user.password_hash:
+            test_user.password_hash = default_password_hash
+            await db.flush()
+
+    # 1c. Aditya account: adityahars09@gmail.com (password: password123)
+    result = await db.execute(select(User).where(User.email == "adityahars09@gmail.com"))
+    aditya_user = result.scalar_one_or_none()
+    if aditya_user is None:
+        aditya_user = User(
+            id=str(uuid.uuid4()),
+            display_name="Aditya Raj",
+            email="adityahars09@gmail.com",
+            password_hash=default_password_hash,
+            is_default_user=False,
+        )
+        db.add(aditya_user)
+        await db.flush()
+        logger.info("Created user: adityahars09@gmail.com")
+    else:
+        if not aditya_user.password_hash:
+            aditya_user.password_hash = default_password_hash
+            await db.flush()
 
     now = utcnow()
 
