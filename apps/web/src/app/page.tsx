@@ -23,7 +23,7 @@ export default function LandingPage() {
   return (
     <div className="min-h-screen flex flex-col bg-white text-slate-900 selection:bg-blue-100 selection:text-blue-900">
       {/* Unified Top Hero & Carousel Gradient Canvas - Continuous with zero seams */}
-      <div className="relative overflow-hidden bg-gradient-to-b from-[#040B2B] via-[#081545] via-15% via-[#0E266A] via-35% via-[#16388C] via-55% via-[#234EAD] via-72% via-[#5D84DD]/40 via-88% to-white">
+      <div className="relative overflow-hidden bg-gradient-to-b from-[#08164A] via-[#0E2368] via-20% via-[#16388C] via-45% to-[#1F48AC]">
         {/* Ambient subtle glow effects */}
         <div className="absolute top-[20%] left-1/2 -translate-x-1/2 w-[850px] h-[550px] bg-blue-500/12 rounded-full blur-3xl pointer-events-none" />
         <div className="absolute top-[35%] left-1/4 w-[450px] h-[450px] bg-purple-500/10 rounded-full blur-3xl pointer-events-none" />

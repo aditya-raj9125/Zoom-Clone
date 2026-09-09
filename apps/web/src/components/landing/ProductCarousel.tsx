@@ -159,8 +159,12 @@ export function ProductCarousel() {
       onTouchStart={() => setIsPaused(true)}
       onTouchEnd={() => setIsPaused(false)}
     >
+      {/* Smooth natural blend between Blue & White centered at 50% middle of the cards */}
+      <div className="absolute inset-x-0 top-[130px] sm:top-[150px] h-[120px] bg-gradient-to-b from-white/0 via-white/50 to-white z-0 pointer-events-none" />
+      <div className="absolute inset-x-0 bottom-0 top-[250px] sm:top-[270px] bg-white z-0 pointer-events-none" />
+
       {/* Full-width Carousel Viewport allowing cards to bleed in & out of screen borders */}
-      <div className="w-full overflow-hidden py-4 [--card-step:250px] [--card-half:115px] sm:[--card-step:284px] sm:[--card-half:130px]">
+      <div className="relative z-10 w-full overflow-hidden py-4 [--card-step:250px] [--card-half:115px] sm:[--card-step:284px] sm:[--card-half:130px]">
         <div
           className={`flex gap-5 sm:gap-6 items-center will-change-transform ${
             isAnimating ? "transition-transform duration-700 ease-out" : "transition-none"
@@ -196,7 +200,7 @@ export function ProductCarousel() {
       </div>
 
       {/* Extreme Left & Right Navigation Controls with Centered Indicators */}
-      <div className="mt-8 w-full px-6 sm:px-12 lg:px-16 flex items-center justify-between">
+      <div className="relative z-10 mt-8 w-full px-6 sm:px-12 lg:px-16 flex items-center justify-between">
         {/* Left Arrow Button on Extreme Left */}
         <button
           onClick={handlePrev}
